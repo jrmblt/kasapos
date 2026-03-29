@@ -30,7 +30,7 @@
     },
     "dev": {
       "cache": false,
-      "dependsOn": ["^db:generate"],
+      "dependsOn": ["^build", "^db:generate"],
       "persistent": true
     }
   }
