@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { BASE_ROLE_PERMISSIONS } from "@repo/database";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
@@ -18,7 +19,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private redis: RedisService,
-  ) { }
+  ) {}
 
   // ── Login ───────────────────────────────────────────────
   async login(email: string, pin: string) {
@@ -30,7 +31,8 @@ export class AuthService {
         id: true,
         tenantId: true,
         branchId: true,
-        role: true,
+        roleId: true,
+        role: { select: { baseRole: true, permissions: true } },
         name: true,
         pinCode: true,
         tokenVersion: true,
@@ -66,7 +68,8 @@ export class AuthService {
         id: true,
         tenantId: true,
         branchId: true,
-        role: true,
+        roleId: true,
+        role: { select: { baseRole: true, permissions: true } },
         name: true,
         isActive: true,
         tokenVersion: true,
@@ -124,20 +127,40 @@ export class AuthService {
     id: string;
     tenantId: string;
     branchId: string | null;
-    role: string;
+    roleId: string | null;
+    role: { baseRole: string; permissions: string[] } | null;
     name: string;
     tokenVersion: number;
   }) {
+    // let permissions: string[]
+
+    // if (user.customRoleId) {
+    //   // มี custom role → ใช้ permissions จาก Role table
+    //   const customRole = await this.prisma.role.findUnique({
+    //     where: { id: user.customRoleId },
+    //     select: { permissions: true, baseRole: true },
+    //   })
+    //   permissions = customRole?.permissions ?? []
+    // } else {
+    //   // ไม่มี custom role → fallback ตาม BASE_ROLE_PERMISSIONS
+    //   permissions = BASE_ROLE_PERMISSIONS[user.role] ?? []
+    // }
+
+    const baseRole = user.role?.baseRole ?? "CASHIER";
+    const permissions: string[] =
+      user.role?.permissions ?? BASE_ROLE_PERMISSIONS[baseRole] ?? [];
+
     const tokenId = crypto.randomUUID();
 
     const payload = {
       sub: user.id,
       tenantId: user.tenantId,
       branchId: user.branchId,
-      role: user.role,
+      role: baseRole,
       name: user.name,
       version: user.tokenVersion,
       jti: tokenId,
+      permissions,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -166,7 +189,7 @@ export class AuthService {
       user: {
         id: user.id,
         name: user.name,
-        role: user.role,
+        role: baseRole,
         branchId: user.branchId,
       },
     };

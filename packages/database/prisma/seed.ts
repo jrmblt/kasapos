@@ -1,5 +1,7 @@
-import { TableStatus, UserRole } from "@prisma/client";
-import { db } from "../src";
+import { TableStatus, type UserRole } from "@prisma/client";
+import { BASE_ROLE_PERMISSIONS, createDb, Permission } from "../src";
+
+const db = createDb();
 
 async function main() {
   console.log("🌱 Seeding...");
@@ -22,6 +24,49 @@ async function main() {
           pointExpireMonths: 12,
         },
       },
+    },
+  });
+
+  const systemRoles = ["OWNER", "MANAGER", "CASHIER", "KITCHEN"] as const;
+
+  const roleMap: Record<string, string> = {};
+  for (const baseRole of systemRoles) {
+    const role = await db.role.upsert({
+      where: {
+        tenantId_name: { tenantId: tenant.id, name: baseRole },
+      },
+      update: {},
+      create: {
+        tenantId: tenant.id,
+        name: baseRole,
+        baseRole: baseRole as UserRole,
+        permissions: BASE_ROLE_PERMISSIONS[baseRole],
+        isSystem: true,
+      },
+    });
+    roleMap[baseRole] = role.id;
+  }
+
+  await db.role.upsert({
+    where: {
+      tenantId_name: { tenantId: tenant.id, name: "หัวหน้ากะ" },
+    },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      name: "หัวหน้ากะ",
+      baseRole: "MANAGER" as UserRole, // hierarchy level = MANAGER
+      permissions: [
+        Permission.ORDER_CREATE,
+        Permission.ORDER_VIEW,
+        Permission.ORDER_VOID, // void ได้ แต่แก้ราคาไม่ได้
+        Permission.MENU_READ,
+        Permission.PAYMENT_PROCESS,
+        Permission.SHIFT_OPEN,
+        Permission.SHIFT_CLOSE,
+        Permission.REPORT_VIEW,
+      ],
+      isSystem: false,
     },
   });
 
@@ -88,7 +133,7 @@ async function main() {
         branchId: branch.id,
         name: "Admin",
         email: "admin@demo.com",
-        role: UserRole.OWNER,
+        roleId: roleMap["OWNER"],
         pinCode: "1234",
       },
       {
@@ -97,7 +142,7 @@ async function main() {
         branchId: branch.id,
         name: "นภา",
         email: "napa@demo.com",
-        role: UserRole.CASHIER,
+        roleId: roleMap["CASHIER"],
         pinCode: "5678",
       },
       {
@@ -106,7 +151,7 @@ async function main() {
         branchId: branch.id,
         name: "ครัวหลัก",
         email: "kitchen@demo.com",
-        role: UserRole.KITCHEN,
+        roleId: roleMap["KITCHEN"],
         pinCode: "9999",
       },
     ],

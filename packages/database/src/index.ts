@@ -3,6 +3,8 @@ import { PrismaClient } from "@prisma/client";
 import "dotenv/config";
 
 export * from "@prisma/client";
+export type { Permission as PermissionType } from "./permissions";
+export { BASE_ROLE_PERMISSIONS, Permission } from "./permissions";
 
 // PrismaPg manages a pg.Pool internally.
 // For infrastructure-level pooling (Supabase, Neon, etc.) just set DATABASE_URL
