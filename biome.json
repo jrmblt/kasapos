@@ -23,6 +23,11 @@
     "indentWidth": 2,
     "lineEnding": "lf"
   },
+  "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
