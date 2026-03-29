@@ -6,10 +6,523 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
+// ─── ENUMS ───────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  MANAGER
+  CASHIER
+  KITCHEN
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+enum OrderStatus {
+  PENDING // รอส่งครัว
+  CONFIRMED // ส่งครัวแล้ว
+  PREPARING // กำลังทำ
+  READY // เสร็จแล้ว รอเสิร์ฟ
+  SERVED // เสิร์ฟแล้ว
+  COMPLETED // ชำระเงินแล้ว
+  CANCELLED // ยกเลิก
+}
+
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  DONE
+  VOIDED
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  SELF_ORDER // จาก QR self-order
+  DELIVERY // Phase 2
+}
+
+enum PaymentMethod {
+  CASH
+  PROMPTPAY
+  CREDIT_CARD
+  DEBIT_CARD
+  TRUE_MONEY // Phase 2
+  LINE_PAY // Phase 2
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+  PARTIAL_REFUND
+}
+
+enum StockLogReason {
+  ORDER_DEDUCT // ตัดจากออเดอร์
+  MANUAL_ADD // เพิ่ม stock manual
+  MANUAL_DEDUCT // ลด stock manual
+  VOID_RESTORE // คืน stock เมื่อ void
+  ADJUSTMENT // ปรับ stock รอบนับ
+}
+
+enum ModifierType {
+  SINGLE_SELECT // เลือกได้ 1 อย่าง (เช่น size)
+  MULTI_SELECT // เลือกได้หลายอย่าง (เช่น topping)
+}
+
+enum TableSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  DONE
+  SKIPPED
+}
+
+enum PointType {
+  EARN
+  REDEEM
+  EXPIRE
+  ADJUST
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+// ─── MULTI-TENANCY ───────────────────────────────────────
+
+model Tenant {
   id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+  name      String
+  slug      String   @unique // ใช้เป็น subdomain: {slug}.pos.app
+  plan      String   @default("starter") // starter | pro | enterprise
+  settings  Json     @default("{}") // JSON config ต่างๆ
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  branches           Branch[]
+  users              User[]
+  categories         Category[]
+  menuItems          MenuItem[]
+  modifiers          Modifier[]
+  customers          Customer[]
+  loyaltyAccounts    LoyaltyAccount[]
+  loyaltyTierConfigs LoyaltyTierConfig[]
+
+  @@map("tenants")
+}
+
+// ─── BRANCH ──────────────────────────────────────────────
+
+model Branch {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  address      String?
+  phone        String?
+  timezone     String   @default("Asia/Bangkok")
+  currency     String   @default("THB")
+  taxRate      Decimal  @default(0) @db.Decimal(5, 4) // เช่น 0.07 = 7%
+  isActive     Boolean  @default(true)
+  queueEnabled Boolean  @default(false)
+  currentQueue Int      @default(0)
+  settings     Json     @default("{}") // printer config, receipt template ฯลฯ
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tables            Table[]
+  orders            Order[]
+  shifts            Shift[]
+  users             User[]
+  queueTickets      QueueTicket[]
+  pointTransactions PointTransaction[]
+
+  @@index([tenantId])
+  @@map("branches")
+}
+
+// ─── USERS ───────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  branchId     String? // null = ทุกสาขา
+  name         String
+  email        String?
+  pinCode      String? // 4-6 digit PIN สำหรับ void/manager action
+  tokenVersion Int      @default(0)
+  role         UserRole @default(CASHIER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+  orders Order[] @relation("CashierOrders")
+  shifts Shift[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("users")
+}
+
+// ─── MENU ────────────────────────────────────────────────
+
+model Category {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  nameEn    String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  menuItems MenuItem[]
+
+  @@index([tenantId])
+  @@map("categories")
+}
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  tenantId    String
+  categoryId  String
+  name        String
+  nameEn      String?
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  imageUrl    String?
+  isAvailable Boolean  @default(true)
+  stockQty    Int? // null = ไม่ track stock
+  stockAlert  Int?     @default(5) // แจ้งเตือนเมื่อเหลือต่ำกว่านี้
+  sortOrder   Int      @default(0)
+  tags        String[] @default([]) // เช่น ["bestseller", "spicy", "vegan"]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category   Category    @relation(fields: [categoryId], references: [id])
+  modifiers  Modifier[]
+  orderItems OrderItem[]
+  stockLogs  StockLog[]
+
+  @@index([tenantId])
+  @@index([categoryId])
+  @@map("menu_items")
+}
+
+model Modifier {
+  id         String       @id @default(cuid())
+  tenantId   String
+  menuItemId String
+  name       String // เช่น "ความหวาน", "Size", "Topping"
+  type       ModifierType @default(SINGLE_SELECT)
+  isRequired Boolean      @default(false)
+  minSelect  Int          @default(0)
+  maxSelect  Int          @default(1)
+  options    Json // [{ "name": "หวานน้อย", "priceAdd": 0 }]
+  sortOrder  Int          @default(0)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@index([menuItemId])
+  @@map("modifiers")
+}
+
+// ─── TABLES ──────────────────────────────────────────────
+
+model Table {
+  id        String      @id @default(cuid())
+  branchId  String
+  name      String // เช่น "A1", "โต๊ะ 5", "VIP Room"
+  zone      String? // เช่น "Indoor", "Outdoor", "Bar"
+  capacity  Int         @default(4)
+  status    TableStatus @default(AVAILABLE)
+  qrCodeUrl String? // URL สำหรับ QR self-order
+  qrToken   String?     @unique // token ที่ใช้ใน self-order URL
+  posX      Int? // สำหรับ floor plan (Phase 2)
+  posY      Int?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  branch   Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orders   Order[]
+  sessions TableSession[]
+
+  @@index([branchId])
+  @@map("tables")
+}
+
+model TableSession {
+  id         String             @id @default(cuid())
+  tableId    String
+  guestCount Int?
+  note       String?
+  status     TableSessionStatus @default(OPEN)
+  totalSpend Decimal            @default(0) @db.Decimal(10, 2)
+  openedAt   DateTime           @default(now())
+  closedAt   DateTime?
+
+  table  Table   @relation(fields: [tableId], references: [id])
+  orders Order[] @relation("SessionOrders")
+
+  @@index([tableId])
+  @@index([status])
+  @@map("table_sessions")
+}
+
+// ─── ORDERS ──────────────────────────────────────────────
+
+model Order {
+  id            String      @id @default(cuid())
+  branchId      String
+  tableId       String?
+  sessionId     String?
+  cashierId     String?
+  type          OrderType   @default(DINE_IN)
+  status        OrderStatus @default(PENDING)
+  note          String?
+  subtotal      Decimal     @default(0) @db.Decimal(10, 2)
+  discountAmt   Decimal     @default(0) @db.Decimal(10, 2)
+  discountNote  String?
+  taxAmt        Decimal     @default(0) @db.Decimal(10, 2)
+  total         Decimal     @default(0) @db.Decimal(10, 2)
+  guestCount    Int?
+  customerPhone String?
+  receiptToken  String?     @unique
+  receiptNo     String?     @unique
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  completedAt   DateTime?
+
+  branch      Branch        @relation(fields: [branchId], references: [id])
+  table       Table?        @relation(fields: [tableId], references: [id])
+  session     TableSession? @relation("SessionOrders", fields: [sessionId], references: [id])
+  cashier     User?         @relation("CashierOrders", fields: [cashierId], references: [id])
+  items       OrderItem[]
+  payments    Payment[]
+  queueTicket QueueTicket?
+
+  @@index([branchId])
+  @@index([tableId])
+  @@index([sessionId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String          @id @default(cuid())
+  orderId    String
+  menuItemId String
+  name       String // snapshot ชื่อเมนู ณ ตอนสั่ง
+  unitPrice  Decimal         @db.Decimal(10, 2)
+  qty        Int             @default(1)
+  modifiers  Json            @default("[]") // snapshot modifier ที่เลือก
+  note       String?
+  status     OrderItemStatus @default(PENDING)
+  voidedById String? // user ที่ทำ void
+  voidReason String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([orderId])
+  @@index([status])
+  @@map("order_items")
+}
+
+// ─── PAYMENTS ────────────────────────────────────────────
+
+model Payment {
+  id           String        @id @default(cuid())
+  orderId      String
+  method       PaymentMethod
+  amount       Decimal       @db.Decimal(10, 2)
+  cashReceived Decimal?      @db.Decimal(10, 2) // กรณีจ่ายเงินสด
+  changeAmt    Decimal?      @db.Decimal(10, 2)
+  status       PaymentStatus @default(PENDING)
+  gatewayRef   String? // Omise charge ID หรือ reference อื่นๆ
+  gatewayData  Json? // raw response จาก gateway
+  confirmedAt  DateTime?
+  refundAmt    Decimal?      @db.Decimal(10, 2)
+  refundRef    String?
+  refundedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ─── SHIFTS ──────────────────────────────────────────────
+
+model Shift {
+  id           String    @id @default(cuid())
+  branchId     String
+  userId       String
+  openCash     Decimal   @db.Decimal(10, 2) // เงินเปิดกะ
+  closeCash    Decimal?  @db.Decimal(10, 2) // เงินนับปิดกะ
+  expectedCash Decimal?  @db.Decimal(10, 2) // คำนวณจากยอดขาย
+  difference   Decimal?  @db.Decimal(10, 2) // closeCash - expectedCash
+  note         String?
+  openedAt     DateTime  @default(now())
+  closedAt     DateTime?
+
+  branch Branch @relation(fields: [branchId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([branchId])
+  @@index([userId])
+  @@map("shifts")
+}
+
+// ─── STOCK LOGS ──────────────────────────────────────────
+
+model StockLog {
+  id         String         @id @default(cuid())
+  menuItemId String
+  delta      Int // บวก = เพิ่ม, ลบ = ลด
+  qtyAfter   Int // stock หลังเปลี่ยน
+  reason     StockLogReason
+  orderId    String? // มีถ้า reason = ORDER_DEDUCT หรือ VOID_RESTORE
+  note       String?
+  createdAt  DateTime       @default(now())
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([menuItemId])
+  @@index([createdAt])
+  @@map("stock_logs")
+}
+
+model QueueTicket {
+  id          String      @id @default(cuid())
+  branchId    String
+  orderId     String      @unique
+  ticketNo    Int
+  displayCode String?
+  status      QueueStatus @default(WAITING)
+  calledAt    DateTime?
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+  order  Order  @relation(fields: [orderId], references: [id])
+
+  @@index([branchId, status])
+  @@index([branchId, ticketNo])
+  @@map("queue_tickets")
+}
+
+// ─── CUSTOMERS (CRM lite) ────────────────────────────────
+
+model Customer {
+  id          String   @id @default(cuid())
+  tenantId    String
+  phone       String // จาก PromptPay
+  name        String?
+  visitCount  Int      @default(1)
+  totalSpend  Decimal  @default(0) @db.Decimal(12, 2)
+  lastVisitAt DateTime @default(now())
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  loyalty LoyaltyAccount?
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@map("customers")
+}
+
+model LoyaltyAccount {
+  id          String    @id @default(cuid())
+  tenantId    String
+  customerId  String    @unique
+  phone       String
+  // tier         LoyaltyTier @default(BRONZE)
+  points      Int       @default(0)
+  totalEarned Int       @default(0)
+  totalSpend  Decimal   @default(0) @db.Decimal(12, 2)
+  visitCount  Int       @default(0)
+  tierId      String
+  lastVisitAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id])
+  customer     Customer           @relation(fields: [customerId], references: [id])
+  tier         LoyaltyTierConfig? @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  transactions PointTransaction[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@index([tierId])
+  @@map("loyalty_accounts")
+}
+
+model LoyaltyTierConfig {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String // "ทอง", "Gold", "VIP" — ตั้งเองได้
+  minPoints  Int // แต้มขั้นต่ำเพื่อเข้า tier นี้
+  multiplier Decimal  @db.Decimal(4, 2) // ตัวคูณแต้ม เช่น 1.5 = ได้แต้ม x1.5
+  color      String? // hex สำหรับ badge UI เช่น "#FFD700"
+  sortOrder  Int      @default(0) // เรียงลำดับ tier
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  accounts LoyaltyAccount[]
+
+  @@index([tenantId])
+  @@map("loyalty_tier_configs")
+}
+
+model PointTransaction {
+  id        String    @id @default(cuid())
+  accountId String
+  orderId   String?
+  branchId  String?
+  type      PointType
+  delta     Int
+  balance   Int
+  note      String?
+  createdAt DateTime  @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id])
+  branch  Branch?        @relation(fields: [branchId], references: [id])
+
+  @@index([accountId])
+  @@index([orderId])
+  @@index([branchId])
+  @@map("point_transactions")
 }

@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import "dotenv/config";
 
 export * from "@prisma/client";
 
@@ -41,3 +42,39 @@ export const db =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = db;
 }
+
+export type {
+  Branch,
+  Category,
+  Customer,
+  LoyaltyAccount,
+  LoyaltyTierConfig,
+  MenuItem,
+  Modifier,
+  Order,
+  OrderItem,
+  Payment,
+  PointTransaction,
+  QueueTicket,
+  Shift,
+  StockLog,
+  Table,
+  TableSession,
+  Tenant,
+  User,
+} from "@prisma/client";
+
+export {
+  ModifierType,
+  OrderItemStatus,
+  OrderStatus,
+  OrderType,
+  PaymentMethod,
+  PaymentStatus,
+  PointType,
+  QueueStatus,
+  StockLogReason,
+  TableSessionStatus,
+  TableStatus,
+  UserRole,
+} from "@prisma/client";
