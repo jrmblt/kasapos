@@ -7,7 +7,7 @@ export * from "@prisma/client";
 // PrismaPg manages a pg.Pool internally.
 // For infrastructure-level pooling (Supabase, Neon, etc.) just set DATABASE_URL
 // to the PgBouncer URL — no code changes needed here.
-const adapter = new PrismaPg(
+export const adapter = new PrismaPg(
   {
     connectionString: process.env.DATABASE_URL,
     max: Number(process.env.DATABASE_POOL_MAX ?? "10"),
