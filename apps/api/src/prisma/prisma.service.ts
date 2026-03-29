@@ -1,8 +1,20 @@
-import { PrismaClient } from "@repo/database";
+import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { createAdapter, PrismaClient } from "@repo/database";
 
-/**
- * PrismaService is a type alias for PrismaClient.
- * The actual instance (the `db` singleton from @repo/database) is provided
- * by PrismaModule via `useValue`, so no constructor is ever called here.
- */
-export class PrismaService extends PrismaClient {}
+@Injectable()
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
+  constructor() {
+    super({ adapter: createAdapter() });
+  }
+
+  async onModuleInit() {
+    await this.$connect();
+  }
+
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+}
