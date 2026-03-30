@@ -9,9 +9,10 @@ import { RolesGuard } from "./auth/guards/roles.guard";
 import { MenuModule } from "./modules/menu/menu.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
+import { OrdersModule } from './modules/orders/orders.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule, AuthModule, MenuModule],
+  imports: [PrismaModule, RedisModule, AuthModule, MenuModule, OrdersModule],
   controllers: [AppController],
   providers: [
     AppService,
