@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LoyaltyService } from "../loyalty/loyalty.service";
 import { OrdersService } from "../orders/orders.service";
 import { QueueService } from "../queue/queue.service";
 import { PayCashDto } from "./dto/pay-cash.dto";
@@ -21,6 +22,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private orders: OrdersService,
     private queue: QueueService,
+    private loyalty: LoyaltyService,
   ) {}
 
   // ── PromptPay QR ─────────────────────────────────────
@@ -267,6 +269,15 @@ export class PaymentsService {
       }
     } catch {
       // queue disabled → ไม่เป็นไร ไม่ต้อง throw
+    }
+
+    try {
+      await this.loyalty.earn(order?.branch?.tenantId, {
+        orderId: orderId,
+        phone: charge.source?.phone_number,
+      });
+    } catch {
+      // loyalty disabled หรือไม่มีเบอร์ → ไม่เป็นไร
     }
   }
 

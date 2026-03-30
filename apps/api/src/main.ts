@@ -1,4 +1,4 @@
-import { ValidationPipe } from "@nestjs/common";
+import { RequestMethod, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 
@@ -12,6 +12,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  app.setGlobalPrefix("api", {
+    exclude: [{ path: "health", method: RequestMethod.GET }],
+  });
 
   await app.listen(process.env.PORT ?? 3333);
 }
