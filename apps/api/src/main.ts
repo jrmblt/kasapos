@@ -5,6 +5,17 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") ?? [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3200",
+  ];
+
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // ตัด field ที่ไม่ได้ declare ใน DTO ออก

@@ -4,13 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { QueueGateway } from "src/gateways/queue/queue.gateway";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateTicketDto } from "./dto/create-ticket.dto";
 import { UpdateTicketDto } from "./dto/update-ticket.dto";
 
 @Injectable()
 export class QueueService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private gateway: QueueGateway,
+  ) { }
 
   // ── สร้างตั๋วคิว (เรียกหลัง payment confirm) ───────────
   async createTicket(branchId: string, dto: CreateTicketDto) {
@@ -42,7 +46,7 @@ export class QueueService {
     const ticketNo = updated.currentQueue;
     const displayCode = `A${String(ticketNo).padStart(3, "0")}`; // A001, A042
 
-    return this.prisma.queueTicket.create({
+    const ticket = await this.prisma.queueTicket.create({
       data: {
         branchId,
         orderId: dto.orderId,
@@ -51,6 +55,8 @@ export class QueueService {
         status: "WAITING",
       },
     });
+    this.gateway.emitTicketCreated(branchId, ticket)
+    return ticket
   }
 
   // ── ดึงคิวทั้งหมดของสาขา (สำหรับหน้าจอ TV) ────────────
@@ -112,12 +118,12 @@ export class QueueService {
     const aheadCount =
       ticket.status === "WAITING"
         ? await this.prisma.queueTicket.count({
-            where: {
-              branch: { orders: { some: { id: orderId } } },
-              ticketNo: { lt: ticket.ticketNo },
-              status: "WAITING",
-            },
-          })
+          where: {
+            branch: { orders: { some: { id: orderId } } },
+            ticketNo: { lt: ticket.ticketNo },
+            status: "WAITING",
+          },
+        })
         : 0;
 
     return {
@@ -137,7 +143,7 @@ export class QueueService {
     // validate state transition
     this.assertValidTransition(ticket.status, dto.status);
 
-    return this.prisma.queueTicket.update({
+    const result = await this.prisma.queueTicket.update({
       where: { id: ticketId },
       data: {
         status: dto.status,
@@ -147,6 +153,13 @@ export class QueueService {
           : undefined,
       },
     });
+
+    if (['DONE', 'SKIPPED'].includes(dto.status)) {
+      this.gateway.emitTicketDone(branchId, ticketId)
+    }
+    const board = await this.getQueueBoard(branchId)
+    this.gateway.emitBoardUpdated(branchId, board)
+    return result
   }
 
   // ── เรียกคิวถัดไป (กดปุ่ม "เรียกคิวถัดไป") ─────────────
@@ -165,10 +178,16 @@ export class QueueService {
     });
 
     // เรียกคิวใหม่
-    return this.prisma.queueTicket.update({
+    const ticket = await this.prisma.queueTicket.update({
       where: { id: next.id },
       data: { status: "CALLED", calledAt: new Date() },
     });
+
+    this.gateway.emitTicketCalled(branchId, ticket)
+    // ส่ง board ใหม่ทั้งหมดด้วย
+    const board = await this.getQueueBoard(branchId)
+    this.gateway.emitBoardUpdated(branchId, board)
+    return ticket
   }
 
   // ── Reset คิว (เปิดวันใหม่) ───────────────────────────

@@ -6,13 +6,14 @@ import { AuthModule } from "./auth/auth.module";
 import { JwtAuthGuard } from "./auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "./auth/guards/permissions.guard";
 import { RolesGuard } from "./auth/guards/roles.guard";
+import { GatewayModule } from "./gateways/gateway.module";
+import { LoyaltyModule } from "./modules/loyalty/loyalty.module";
 import { MenuModule } from "./modules/menu/menu.module";
 import { OrdersModule } from "./modules/orders/orders.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { QueueModule } from "./modules/queue/queue.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
-import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LoyaltyModule } from './modules/loyalty/loyalty.module';
     PaymentsModule,
     QueueModule,
     LoyaltyModule,
+    GatewayModule,
   ],
   controllers: [AppController],
   providers: [
@@ -33,4 +35,4 @@ import { LoyaltyModule } from './modules/loyalty/loyalty.module';
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })
-export class AppModule {}
+export class AppModule { }

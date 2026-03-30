@@ -6,13 +6,17 @@ import {
 } from "@nestjs/common";
 import { OrderItemStatus, OrderStatus } from "@repo/database";
 import * as crypto from "crypto";
+import { KdsGateway } from "src/gateways/kds/kds.gateway";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { VoidItemDto } from "./dto/void-item.dto";
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private kds: KdsGateway,
+  ) { }
 
   // ── Create Order ─────────────────────────────────────
   async create(cashierId: string, tenantId: string, dto: CreateOrderDto) {
@@ -66,7 +70,7 @@ export class OrdersService {
     );
 
     // 4. สร้าง order + ตัด stock ใน transaction เดียว
-    return this.prisma.$transaction(async (tx) => {
+    const order = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
           branchId: dto.branchId,
@@ -117,6 +121,8 @@ export class OrdersService {
 
       return order;
     });
+    this.kds.emitNewOrder(dto.branchId, order)
+    return order
   }
 
   // ── Get Order ────────────────────────────────────────
@@ -160,7 +166,7 @@ export class OrdersService {
     itemId: string,
     status: (typeof OrderItemStatus)[keyof typeof OrderItemStatus],
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const item = await this.prisma.$transaction(async (tx) => {
       const item = await tx.orderItem.update({
         where: { id: itemId },
         data: { status },
@@ -197,6 +203,14 @@ export class OrdersService {
 
       return item;
     });
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { branchId: true },
+    })
+    if (order) {
+      this.kds.emitItemUpdated(order.branchId, { orderId, itemId, status })
+    }
+    return item
   }
 
   // ── Void Item ────────────────────────────────────────
@@ -217,7 +231,7 @@ export class OrdersService {
       throw new ForbiddenException("PIN ไม่ถูกต้อง");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const item = await tx.orderItem.update({
         where: { id: itemId },
         data: {
@@ -272,6 +286,20 @@ export class OrdersService {
 
       return { success: true };
     });
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { branchId: true },
+    })
+    if (order) {
+      this.kds.emitItemVoided(order.branchId, {
+        orderId,
+        itemId,
+        voidReason: dto.voidReason,
+      })
+    }
+
+    return result
   }
 
   // ── Complete Order (หลังชำระเงิน) ────────────────────
@@ -323,55 +351,68 @@ export class OrdersService {
     const order = await this.prisma.order.findFirst({
       where: {
         id: orderId,
-        branch: { tenantId },          // cross-tenant ไม่ผ่าน → null → 404
-        status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED'] },
+        branch: { tenantId }, // cross-tenant ไม่ผ่าน → null → 404
+        status: {
+          in: ["PENDING", "CONFIRMED", "PREPARING", "READY", "SERVED"],
+        },
       },
       select: { id: true },
-    })
-    if (!order) throw new NotFoundException('ไม่พบออเดอร์หรือไม่มีสิทธิ์')
+    });
+    if (!order) throw new NotFoundException("ไม่พบออเดอร์หรือไม่มีสิทธิ์");
 
-    return this._completeInternal(orderId)
+    return this._completeInternal(orderId);
   }
 
   // เรียกจาก PaymentsService (webhook) — เช็คแล้วก่อนเรียก
   async completeInternal(orderId: string) {
-    return this._completeInternal(orderId)
+    return this._completeInternal(orderId);
   }
 
   // private — logic จริง ไม่มี security check
   private async _completeInternal(orderId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.update({
         where: { id: orderId },
-        data: { status: 'COMPLETED', completedAt: new Date() },
+        data: { status: "COMPLETED", completedAt: new Date() },
         select: { tableId: true, sessionId: true },
-      })
+      });
 
       if (order.tableId) {
         const activeCount = await tx.order.count({
           where: {
             tableId: order.tableId,
             id: { not: orderId },
-            status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED'] },
+            status: {
+              in: ["PENDING", "CONFIRMED", "PREPARING", "READY", "SERVED"],
+            },
           },
-        })
+        });
         if (activeCount === 0) {
           await tx.table.update({
             where: { id: order.tableId },
-            data: { status: 'AVAILABLE' },
-          })
+            data: { status: "AVAILABLE" },
+          });
         }
       }
 
       if (order.sessionId) {
         await tx.tableSession.update({
           where: { id: order.sessionId },
-          data: { status: 'CLOSED', closedAt: new Date() },
-        })
+          data: { status: "CLOSED", closedAt: new Date() },
+        });
       }
 
-      return order
+      return order;
+    });
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { branchId: true },
     })
+    if (order) {
+      this.kds.emitOrderCompleted(order.branchId, orderId)
+    }
+    return result
   }
 
   // ── Get by Receipt Token (QR receipt) ────────────────
