@@ -275,44 +275,103 @@ export class OrdersService {
   }
 
   // ── Complete Order (หลังชำระเงิน) ────────────────────
+  // async complete(orderId: string, tenantId: string) {
+  //   const order = await this.findOne(tenantId, orderId);
+  //   if (!order) throw new NotFoundException("ไม่พบออเดอร์");
+  //   if (order.status === "COMPLETED") throw new BadRequestException("ออเดอร์นี้ชำระเงินแล้ว");
+  //   return this.prisma.$transaction(async (tx) => {
+  //     const order = await tx.order.update({
+  //       where: { id: orderId },
+  //       data: { status: "COMPLETED", completedAt: new Date() },
+  //       select: { tableId: true, sessionId: true, total: true },
+  //     });
+
+  //     // คืนโต๊ะ → AVAILABLE
+  //     if (order.tableId) {
+  //       // เช็คก่อนว่ายังมี order อื่น active อยู่ไหม
+  //       const activeOrders = await tx.order.count({
+  //         where: {
+  //           tableId: order.tableId,
+  //           status: {
+  //             in: ["PENDING", "CONFIRMED", "PREPARING", "READY", "SERVED"],
+  //           },
+  //           id: { not: orderId },
+  //         },
+  //       });
+  //       if (activeOrders === 0) {
+  //         await tx.table.update({
+  //           where: { id: order.tableId },
+  //           data: { status: "AVAILABLE" },
+  //         });
+  //       }
+  //     }
+
+  //     // ปิด session (ถ้ามี)
+  //     if (order.sessionId) {
+  //       await tx.tableSession.update({
+  //         where: { id: order.sessionId },
+  //         data: { status: "CLOSED", closedAt: new Date() },
+  //       });
+  //     }
+
+  //     return order;
+  //   });
+  // }
+  // เรียกจาก controller — ต้องเช็ค tenant ก่อน
   async complete(orderId: string, tenantId: string) {
+    // เช็ค ownership ก่อนทำอะไรทั้งนั้น
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        branch: { tenantId },          // cross-tenant ไม่ผ่าน → null → 404
+        status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED'] },
+      },
+      select: { id: true },
+    })
+    if (!order) throw new NotFoundException('ไม่พบออเดอร์หรือไม่มีสิทธิ์')
+
+    return this._completeInternal(orderId)
+  }
+
+  // เรียกจาก PaymentsService (webhook) — เช็คแล้วก่อนเรียก
+  async completeInternal(orderId: string) {
+    return this._completeInternal(orderId)
+  }
+
+  // private — logic จริง ไม่มี security check
+  private async _completeInternal(orderId: string) {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.update({
         where: { id: orderId },
-        data: { status: "COMPLETED", completedAt: new Date() },
-        select: { tableId: true, sessionId: true, total: true },
-      });
+        data: { status: 'COMPLETED', completedAt: new Date() },
+        select: { tableId: true, sessionId: true },
+      })
 
-      // คืนโต๊ะ → AVAILABLE
       if (order.tableId) {
-        // เช็คก่อนว่ายังมี order อื่น active อยู่ไหม
-        const activeOrders = await tx.order.count({
+        const activeCount = await tx.order.count({
           where: {
             tableId: order.tableId,
-            status: {
-              in: ["PENDING", "CONFIRMED", "PREPARING", "READY", "SERVED"],
-            },
             id: { not: orderId },
+            status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED'] },
           },
-        });
-        if (activeOrders === 0) {
+        })
+        if (activeCount === 0) {
           await tx.table.update({
             where: { id: order.tableId },
-            data: { status: "AVAILABLE" },
-          });
+            data: { status: 'AVAILABLE' },
+          })
         }
       }
 
-      // ปิด session (ถ้ามี)
       if (order.sessionId) {
         await tx.tableSession.update({
           where: { id: order.sessionId },
-          data: { status: "CLOSED", closedAt: new Date() },
-        });
+          data: { status: 'CLOSED', closedAt: new Date() },
+        })
       }
 
-      return order;
-    });
+      return order
+    })
   }
 
   // ── Get by Receipt Token (QR receipt) ────────────────

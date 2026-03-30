@@ -10,9 +10,10 @@ import { MenuModule } from "./modules/menu/menu.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
 import { OrdersModule } from './modules/orders/orders.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule, AuthModule, MenuModule, OrdersModule],
+  imports: [PrismaModule, RedisModule, AuthModule, MenuModule, OrdersModule, PaymentsModule],
   controllers: [AppController],
   providers: [
     AppService,
