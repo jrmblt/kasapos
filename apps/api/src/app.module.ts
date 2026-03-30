@@ -7,13 +7,22 @@ import { JwtAuthGuard } from "./auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "./auth/guards/permissions.guard";
 import { RolesGuard } from "./auth/guards/roles.guard";
 import { MenuModule } from "./modules/menu/menu.module";
+import { OrdersModule } from "./modules/orders/orders.module";
+import { PaymentsModule } from "./modules/payments/payments.module";
+import { QueueModule } from "./modules/queue/queue.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
-import { OrdersModule } from './modules/orders/orders.module';
-import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule, AuthModule, MenuModule, OrdersModule, PaymentsModule],
+  imports: [
+    PrismaModule,
+    RedisModule,
+    AuthModule,
+    MenuModule,
+    OrdersModule,
+    PaymentsModule,
+    QueueModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,

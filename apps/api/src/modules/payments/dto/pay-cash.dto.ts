@@ -1,10 +1,13 @@
-import { IsNumber, IsPositive, IsString } from 'class-validator'
+import { IsNumber, IsPositive, IsString } from "class-validator";
 
 export class PayCashDto {
   @IsString()
-  orderId!: string
+  orderId!: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
-  cashReceived!: number
+  cashReceived!: number;
+
+  @IsString()
+  branchId!: string; // เพิ่ม — ใช้สร้าง queue ticket
 }

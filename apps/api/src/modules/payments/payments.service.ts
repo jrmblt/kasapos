@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { OrdersService } from "../orders/orders.service";
+import { QueueService } from "../queue/queue.service";
 import { PayCashDto } from "./dto/pay-cash.dto";
 import { PayPromptPayDto } from "./dto/pay-promptpay.dto";
 import { RefundDto } from "./dto/refund.dto";
@@ -19,7 +20,8 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private orders: OrdersService,
-  ) { }
+    private queue: QueueService,
+  ) {}
 
   // ── PromptPay QR ─────────────────────────────────────
   async createPromptPay(dto: PayPromptPayDto) {
@@ -128,7 +130,24 @@ export class PaymentsService {
 
     // ปิด session + คืนโต๊ะ
     // await this.orders.complete(dto.orderId, "");
-    await this.orders.completeInternal(dto.orderId)
+    await this.orders.completeInternal(dto.orderId);
+
+    try {
+      await this.queue.createTicket(dto.branchId, { orderId: dto.orderId });
+    } catch {
+      // queue disabled → ไม่เป็นไร
+    }
+    // try {
+    //   const order = await this.prisma.order.findUnique({
+    //     where: { id: dto.orderId },
+    //     select: { branchId: true },
+    //   })
+    //   if (order) {
+    //     await this.queue.createTicket(order.branchId, { orderId: dto.orderId });
+    //   }
+    // } catch {
+    //   // queue disabled → ไม่เป็นไร ไม่ต้อง throw
+    // }
 
     return { success: true, changeAmt };
   }
@@ -187,7 +206,12 @@ export class PaymentsService {
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { id: true, total: true, branch: { select: { tenantId: true } }, status: true },
+      select: {
+        id: true,
+        total: true,
+        branch: { select: { tenantId: true } },
+        status: true,
+      },
     });
     if (!order || order.status === "COMPLETED") return;
 
@@ -231,7 +255,19 @@ export class PaymentsService {
 
     // ปิด session + คืนโต๊ะ
     // await this.orders.complete(orderId); // tenantId จะถูกดึงจาก order.branch.tenantId
-    await this.orders.completeInternal(orderId)
+    await this.orders.completeInternal(orderId);
+
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        select: { branchId: true },
+      });
+      if (order) {
+        await this.queue.createTicket(order.branchId, { orderId });
+      }
+    } catch {
+      // queue disabled → ไม่เป็นไร ไม่ต้อง throw
+    }
   }
 
   // ── Get payment status ────────────────────────────────
