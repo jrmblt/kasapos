@@ -14,6 +14,7 @@ import { PaymentsModule } from "./modules/payments/payments.module";
 import { QueueModule } from "./modules/queue/queue.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
+import { CouponsModule } from './modules/coupons/coupons.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { RedisModule } from "./redis/redis.module";
     QueueModule,
     LoyaltyModule,
     GatewayModule,
+    CouponsModule,
   ],
   controllers: [AppController],
   providers: [
