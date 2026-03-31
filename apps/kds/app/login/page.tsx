@@ -1,9 +1,9 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, Suspense, useState } from "react";
 import { login, saveToken } from "@/hooks/useAuth";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/";
@@ -73,7 +73,14 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit}>
           <label style={{ display: "block", marginBottom: 16 }}>
-            <span style={{ fontSize: 12, color: "#888", display: "block", marginBottom: 6 }}>
+            <span
+              style={{
+                fontSize: 12,
+                color: "#888",
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
               อีเมล
             </span>
             <input
@@ -98,7 +105,14 @@ export default function LoginPage() {
           </label>
 
           <label style={{ display: "block", marginBottom: 24 }}>
-            <span style={{ fontSize: 12, color: "#888", display: "block", marginBottom: 6 }}>
+            <span
+              style={{
+                fontSize: 12,
+                color: "#888",
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
               PIN (4-6 หลัก)
             </span>
             <input
@@ -162,5 +176,13 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
