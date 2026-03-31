@@ -103,6 +103,66 @@ enum LoyaltyTier {
   PLATINUM
 }
 
+enum CouponType {
+  PERCENT_DISCOUNT // ลด %
+  FIXED_DISCOUNT // ลดจำนวนเงิน
+  FREE_ITEM // แถมเมนู (Phase 2)
+}
+
+enum CouponTargetType {
+  PUBLIC // ใครก็ใช้ได้ถ้ามี code
+  MEMBER_TIER // เฉพาะ tier นั้น
+  MEMBER_NEW // สมาชิกใหม่ (ใช้ได้ครั้งเดียว)
+  MEMBER_FIRST_ORDER // order แรกของ member
+  PHYSICAL_QR // QR ที่พิมพ์แจก
+}
+
+model Coupon {
+  id             String           @id @default(cuid())
+  tenantId       String
+  code           String // "WELCOME10", "SUMMER20"
+  name           String // "ส่วนลด 10% สมาชิกใหม่"
+  type           CouponType
+  targetType     CouponTargetType
+  value          Decimal          @db.Decimal(10, 2) // 10 = 10% หรือ 50 = ฿50
+  minOrderAmt    Decimal?         @db.Decimal(10, 2) // ขั้นต่ำ
+  maxDiscountAmt Decimal?         @db.Decimal(10, 2) // cap สำหรับ PERCENT
+  tierId         String? // ถ้า targetType = MEMBER_TIER
+  usageLimit     Int? // null = ไม่จำกัด (total)
+  usagePerMember Int?             @default(1) // ต่อ member
+  usedCount      Int              @default(0)
+  isActive       Boolean          @default(true)
+  startsAt       DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id])
+  tier   LoyaltyTierConfig? @relation(fields: [tierId], references: [id])
+  usages CouponUsage[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("coupons")
+}
+
+model CouponUsage {
+  id        String   @id @default(cuid())
+  couponId  String
+  orderId   String
+  accountId String? // null = guest ใช้
+  discount  Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  order   Order           @relation(fields: [orderId], references: [id])
+  coupon  Coupon          @relation(fields: [couponId], references: [id])
+  account LoyaltyAccount? @relation(fields: [accountId], references: [id])
+
+  @@index([couponId])
+  @@index([accountId])
+  @@map("coupon_usages")
+}
+
 // ─── MULTI-TENANCY ───────────────────────────────────────
 
 model Tenant {
@@ -110,6 +170,22 @@ model Tenant {
   name      String
   slug      String   @unique // ใช้เป็น subdomain: {slug}.pos.app
   plan      String   @default("starter") // starter | pro | enterprise
+  /// settings schema:
+  /// {
+  ///   "coupon": {
+  ///     "enabled": boolean,
+  ///     "maxPerOrder": number,        // default 1
+  ///     "stackWithPoints": boolean,   // default false
+  ///     "stackBetweenCoupons": boolean // default false
+  ///   },
+  ///   "loyalty": {
+  ///     "earnRate": number,
+  ///     "earnPer": number,
+  ///     "redeemRate": number,
+  ///     "minRedeemPoints": number,
+  ///     "pointExpireMonths": number | null
+  ///   }
+  /// }
   settings  Json     @default("{}") // JSON config ต่างๆ
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -119,10 +195,11 @@ model Tenant {
   categories         Category[]
   menuItems          MenuItem[]
   modifiers          Modifier[]
-  customers          Customer[]
+  // customers          Customer[]
   loyaltyAccounts    LoyaltyAccount[]
   loyaltyTierConfigs LoyaltyTierConfig[]
   roles              Role[]
+  coupons            Coupon[]
 
   @@map("tenants")
 }
@@ -139,11 +216,23 @@ model Branch {
   currency     String   @default("THB")
   taxRate      Decimal  @default(0) @db.Decimal(5, 4) // เช่น 0.07 = 7%
   isActive     Boolean  @default(true)
-  queueEnabled Boolean  @default(false)
   currentQueue Int      @default(0)
   settings     Json     @default("{}") // printer config, receipt template ฯลฯ
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // Self-order config
+  selfOrderEnabled    Boolean @default(false)
+  payLaterEnabled     Boolean @default(false) // order now, pay later
+  payAtCounterEnabled Boolean @default(false) // order & pay ที่เคาน์เตอร์
+  payOnlineEnabled    Boolean @default(true) // order & pay online
+
+  // Queue config (มีอยู่แล้ว)
+  queueEnabled     Boolean @default(false)
+  queueDisplayName Boolean @default(false) // true = เรียกชื่อ, false = เรียกเลข
+
+  // Loyalty config (ย้ายออกจาก tenant.settings มาเป็น field ชัดเจน)
+  loyaltyEnabled Boolean @default(false)
 
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tables            Table[]
@@ -319,13 +408,19 @@ model Order {
   updatedAt     DateTime    @updatedAt
   completedAt   DateTime?
 
-  branch      Branch        @relation(fields: [branchId], references: [id])
-  table       Table?        @relation(fields: [tableId], references: [id])
-  session     TableSession? @relation("SessionOrders", fields: [sessionId], references: [id])
-  cashier     User?         @relation("CashierOrders", fields: [cashierId], references: [id])
-  items       OrderItem[]
-  payments    Payment[]
-  queueTicket QueueTicket?
+  guestName       String? // ชื่อ guest สำหรับเรียกคิว
+  memberAccountId String? // ถ้า order มาจาก member (self-order)
+  checkoutMode    String? // "PAY_ONLINE" | "PAY_LATER" | "PAY_AT_COUNTER"
+
+  branch        Branch          @relation(fields: [branchId], references: [id])
+  memberAccount LoyaltyAccount? @relation(fields: [memberAccountId], references: [id])
+  table         Table?          @relation(fields: [tableId], references: [id])
+  session       TableSession?   @relation("SessionOrders", fields: [sessionId], references: [id])
+  cashier       User?           @relation("CashierOrders", fields: [cashierId], references: [id])
+  items         OrderItem[]
+  payments      Payment[]
+  queueTicket   QueueTicket?
+  couponUsages  CouponUsage[]
 
   @@index([branchId])
   @@index([tableId])
@@ -446,46 +541,48 @@ model QueueTicket {
 
 // ─── CUSTOMERS (CRM lite) ────────────────────────────────
 
-model Customer {
-  id          String   @id @default(cuid())
-  tenantId    String
-  phone       String // จาก PromptPay
-  name        String?
-  visitCount  Int      @default(1)
-  totalSpend  Decimal  @default(0) @db.Decimal(12, 2)
-  lastVisitAt DateTime @default(now())
-  note        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// model Customer {
+//   id          String   @id @default(cuid())
+//   tenantId    String
+//   phone       String // จาก PromptPay
+//   name        String?
+//   visitCount  Int      @default(1)
+//   totalSpend  Decimal  @default(0) @db.Decimal(12, 2)
+//   lastVisitAt DateTime @default(now())
+//   note        String?
+//   createdAt   DateTime @default(now())
+//   updatedAt   DateTime @updatedAt
 
-  tenant  Tenant          @relation(fields: [tenantId], references: [id])
-  loyalty LoyaltyAccount?
+//   tenant  Tenant          @relation(fields: [tenantId], references: [id])
+//   loyalty LoyaltyAccount?
 
-  @@unique([tenantId, phone])
-  @@index([tenantId])
-  @@map("customers")
-}
+//   @@unique([tenantId, phone])
+//   @@index([tenantId])
+//   @@map("customers")
+// }
 
 model LoyaltyAccount {
   id          String    @id @default(cuid())
   tenantId    String
-  customerId  String    @unique
   phone       String
-  // tier         LoyaltyTier @default(BRONZE)
+  name        String? // ชื่อที่ลงทะเบียน — ย้ายมาจาก Customer
+  note        String? // internal note — ย้ายมาจาก Customer
+  tierId      String? // ← ต้อง nullable (ดูข้อ 2)
   points      Int       @default(0)
   totalEarned Int       @default(0)
   totalSpend  Decimal   @default(0) @db.Decimal(12, 2)
   visitCount  Int       @default(0)
-  tierId      String
   lastVisitAt DateTime?
   expiresAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  tenant       Tenant             @relation(fields: [tenantId], references: [id])
-  customer     Customer           @relation(fields: [customerId], references: [id])
-  tier         LoyaltyTierConfig? @relation(fields: [tierId], references: [id], onDelete: Cascade)
-  transactions PointTransaction[]
+  tenant         Tenant             @relation(fields: [tenantId], references: [id])
+  tier           LoyaltyTierConfig? @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  transactions   PointTransaction[]
+  memberSessions MemberSession[]
+  couponUsages   CouponUsage[]
+  orders         Order[]
 
   @@unique([tenantId, phone])
   @@index([tenantId])
@@ -506,6 +603,7 @@ model LoyaltyTierConfig {
 
   tenant   Tenant           @relation(fields: [tenantId], references: [id])
   accounts LoyaltyAccount[]
+  coupons  Coupon[]
 
   @@index([tenantId])
   @@map("loyalty_tier_configs")
@@ -547,4 +645,32 @@ model Role {
   @@unique([tenantId, name])
   @@index([tenantId])
   @@map("roles")
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  tenantId  String
+  code      String // 6 หลัก (log ใน dev)
+  expiresAt DateTime // 5 นาที
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  attempts  Int      @default(0)
+
+  @@index([phone, tenantId, createdAt])
+  @@map("otp_codes")
+}
+
+// Member token แยกจาก Staff JWT
+model MemberSession {
+  id        String   @id @default(cuid())
+  accountId String
+  token     String   @unique // random UUID
+  expiresAt DateTime // 30 วัน
+  createdAt DateTime @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@map("member_sessions")
 }

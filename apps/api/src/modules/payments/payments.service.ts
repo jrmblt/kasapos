@@ -23,7 +23,7 @@ export class PaymentsService {
     private orders: OrdersService,
     private queue: QueueService,
     private loyalty: LoyaltyService,
-  ) {}
+  ) { }
 
   // ── PromptPay QR ─────────────────────────────────────
   async createPromptPay(dto: PayPromptPayDto) {
@@ -234,10 +234,18 @@ export class PaymentsService {
         },
       });
 
+      const lowestTier = await tx.loyaltyTierConfig.findFirst({
+        where: { tenantId: order.branch.tenantId },
+        orderBy: { sortOrder: "asc" },
+        select: { id: true },
+      });
+
+      if (!lowestTier) throw new Error("ไม่พบ tier ต่ำสุด");
+
       // CRM lite — upsert customer จากเบอร์ PromptPay
       const phone = charge.source?.phone_number;
       if (phone && order.branch.tenantId) {
-        await tx.customer.upsert({
+        await tx.loyaltyAccount.upsert({
           where: { tenantId_phone: { tenantId: order.branch.tenantId, phone } },
           create: {
             tenantId: order.branch.tenantId,
@@ -245,6 +253,7 @@ export class PaymentsService {
             visitCount: 1,
             totalSpend: order.total,
             lastVisitAt: new Date(),
+            tierId: lowestTier?.id ?? null,
           },
           update: {
             visitCount: { increment: 1 },
