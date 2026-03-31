@@ -15,6 +15,8 @@ import { QueueModule } from "./modules/queue/queue.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
 import { CouponsModule } from './modules/coupons/coupons.module';
+import { TablesModule } from './modules/tables/tables.module';
+import { MemberAuthModule } from './modules/member-auth/member-auth.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { CouponsModule } from './modules/coupons/coupons.module';
     LoyaltyModule,
     GatewayModule,
     CouponsModule,
+    TablesModule,
+    MemberAuthModule,
   ],
   controllers: [AppController],
   providers: [

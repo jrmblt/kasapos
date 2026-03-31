@@ -42,7 +42,6 @@ export function createDb() {
 export type {
   Branch,
   Category,
-  Customer,
   LoyaltyAccount,
   LoyaltyTierConfig,
   MenuItem,

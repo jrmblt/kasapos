@@ -18,8 +18,11 @@ export const QUEUE_EVENTS = {
   namespace: "/queue",
   cors: {
     origin: process.env.ALLOWED_ORIGINS?.split(",") ?? [
+      "http://localhost:3100",
       "http://localhost:3001",
       "http://localhost:3200",
+      "http://localhost:3300",
+      "http://localhost:3400",
     ],
     credentials: true,
   },

@@ -16,8 +16,10 @@
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
     "@commitlint/types": "^19.8.0",
+    "@tailwindcss/postcss": "^4",
     "knip": "^5.51.0",
     "lefthook": "^1.11.13",
+    "tailwindcss": "^4",
     "turbo": "^2.8.20",
     "typescript": "5.9.2"
   },

@@ -9,6 +9,7 @@ import * as crypto from "crypto";
 import { KdsGateway } from "src/gateways/kds/kds.gateway";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
+import { CreateSelfOrderDto } from "./dto/create-self-order.dto";
 import { VoidItemDto } from "./dto/void-item.dto";
 
 @Injectable()
@@ -19,7 +20,11 @@ export class OrdersService {
   ) { }
 
   // ── Create Order ─────────────────────────────────────
-  async create(cashierId: string, tenantId: string, dto: CreateOrderDto) {
+  async create(cashierId: string | null, tenantId: string, dto: CreateOrderDto & {
+    checkoutMode?: string
+    guestName?: string
+    memberAccountId?: string
+  }) {
     // 1. ดึงราคาจาก DB — ไม่ใช้ราคาจาก client เด็ดขาด
     const menuIds = [...new Set(dto.items.map((i) => i.menuItemId))];
     const menuItems = await this.prisma.menuItem.findMany({
@@ -76,7 +81,7 @@ export class OrdersService {
           branchId: dto.branchId,
           tableId: dto.tableId,
           sessionId: dto.sessionId,
-          cashierId,
+          cashierId: cashierId ?? undefined,
           type: dto.type ?? "DINE_IN",
           note: dto.note,
           subtotal,
@@ -121,8 +126,8 @@ export class OrdersService {
 
       return order;
     });
-    this.kds.emitNewOrder(dto.branchId, order)
-    return order
+    this.kds.emitNewOrder(dto.branchId, order);
+    return order;
   }
 
   // ── Get Order ────────────────────────────────────────
@@ -206,11 +211,11 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: { branchId: true },
-    })
+    });
     if (order) {
-      this.kds.emitItemUpdated(order.branchId, { orderId, itemId, status })
+      this.kds.emitItemUpdated(order.branchId, { orderId, itemId, status });
     }
-    return item
+    return item;
   }
 
   // ── Void Item ────────────────────────────────────────
@@ -290,16 +295,16 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: { branchId: true },
-    })
+    });
     if (order) {
       this.kds.emitItemVoided(order.branchId, {
         orderId,
         itemId,
         voidReason: dto.voidReason,
-      })
+      });
     }
 
-    return result
+    return result;
   }
 
   // ── Complete Order (หลังชำระเงิน) ────────────────────
@@ -408,11 +413,11 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: { branchId: true },
-    })
+    });
     if (order) {
-      this.kds.emitOrderCompleted(order.branchId, orderId)
+      this.kds.emitOrderCompleted(order.branchId, orderId);
     }
-    return result
+    return result;
   }
 
   // ── Get by Receipt Token (QR receipt) ────────────────
@@ -433,5 +438,51 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException("ไม่พบออเดอร์");
     return order;
+  }
+
+  async createSelfOrder(dto: CreateSelfOrderDto) {
+    // 1. ตรวจ branch config
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: dto.branchId },
+      select: {
+        tenantId: true,
+        selfOrderEnabled: true,
+        payLaterEnabled: true,
+        payAtCounterEnabled: true,
+        payOnlineEnabled: true,
+      },
+    });
+    if (!branch) throw new NotFoundException("ไม่พบสาขา");
+    if (!branch.selfOrderEnabled) {
+      throw new BadRequestException("สาขานี้ไม่เปิดรับออเดอร์ผ่าน QR");
+    }
+
+    // 2. ตรวจ checkout mode ว่าสาขาเปิดไว้ไหม
+    const mode = dto.checkoutMode ?? "PAY_ONLINE";
+    if (mode === "PAY_LATER" && !branch.payLaterEnabled) {
+      throw new BadRequestException("สาขานี้ไม่รองรับ pay later");
+    }
+    if (mode === "PAY_AT_COUNTER" && !branch.payAtCounterEnabled) {
+      throw new BadRequestException("สาขานี้ไม่รองรับ pay at counter");
+    }
+    if (mode === "PAY_ONLINE" && !branch.payOnlineEnabled) {
+      throw new BadRequestException("สาขานี้ไม่รองรับ pay online");
+    }
+
+    // 3. ใช้ create เดิม — ส่ง cashierId เป็น null (self-order ไม่มี cashier)
+    return this.create(
+      null, // cashierId = null
+      branch.tenantId,
+      {
+        branchId: dto.branchId,
+        tableId: dto.tableId,
+        sessionId: dto.sessionId,
+        type: "SELF_ORDER",
+        checkoutMode: mode,
+        guestName: dto.guestName,
+        memberAccountId: dto.memberAccountId,
+        items: dto.items,
+      },
+    );
   }
 }

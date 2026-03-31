@@ -1,22 +1,23 @@
 "use client";
 import { use, useState } from "react";
-import { type KdsOrder, type KdsOrderItem, useKds } from "@/hooks/useKds";
 import AuthGuard from "@/components/AuthGuard";
 import { getToken } from "@/hooks/useAuth";
+import { useElapsed, useIsUrgent } from "@/hooks/useElapsed";
+import { type KdsOrder, type KdsOrderItem, useKds } from "@/hooks/useKds";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 // ── helpers ──────────────────────────────────────────────
-function elapsed(createdAt: string) {
-  const ms = Date.now() - new Date(createdAt).getTime();
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+// function elapsed(createdAt: string) {
+//   const ms = Date.now() - new Date(createdAt).getTime();
+//   const m = Math.floor(ms / 60000);
+//   const s = Math.floor((ms % 60000) / 1000);
+//   return `${m}:${String(s).padStart(2, "0")}`;
+// }
 
-function isUrgent(createdAt: string) {
-  return Date.now() - new Date(createdAt).getTime() > 10 * 60 * 1000;
-}
+// function isUrgent(createdAt: string) {
+//   return Date.now() - new Date(createdAt).getTime() > 10 * 60 * 1000;
+// }
 
 // ── Item row ─────────────────────────────────────────────
 function ItemRow({
@@ -146,7 +147,10 @@ function ItemRow({
 
 // ── Order Card ───────────────────────────────────────────
 function OrderCard({ order, token }: { order: KdsOrder; token: string }) {
-  const urgent = isUrgent(order.createdAt);
+  const elapsed = useElapsed(order.createdAt); // re-render ทุกวินาที
+  const urgent = useIsUrgent(order.createdAt);
+
+  // const urgent = isUrgent(order.createdAt);
   const allDone = order.items
     .filter((i) => i.status !== "VOIDED")
     .every((i) => i.status === "DONE");
@@ -201,7 +205,7 @@ function OrderCard({ order, token }: { order: KdsOrder; token: string }) {
           </div>
         </div>
         <span style={{ fontSize: 13, fontWeight: 700, color: timerColor }}>
-          {elapsed(order.createdAt)}
+          {elapsed ?? ""}
         </span>
       </div>
 
@@ -247,66 +251,71 @@ export default function KdsPage({
 
   return (
     <AuthGuard>
-    <div
-      style={{
-        background: "#111",
-        minHeight: "100vh",
-        color: "#fff",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* topbar */}
       <div
         style={{
+          background: "#111",
+          minHeight: "100vh",
+          color: "#fff",
           display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "10px 16px",
-          background: "#1a1a1a",
-          borderBottom: "1px solid #2a2a2a",
+          flexDirection: "column",
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Kitchen Display</span>
+        {/* topbar */}
         <div
-          style={{ display: "flex", gap: 14, marginLeft: "auto", fontSize: 12 }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 16px",
+            background: "#1a1a1a",
+            borderBottom: "1px solid #2a2a2a",
+          }}
         >
-          <span style={{ color: "#e06060" }}>รอทำ {pending.length}</span>
-          <span style={{ color: "#d4a830" }}>กำลังทำ {preparing.length}</span>
-          <span style={{ color: "#4caf50" }}>เสร็จ {ready.length}</span>
-        </div>
-      </div>
-
-      {/* board */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-          gap: 10,
-          padding: 12,
-          alignContent: "start",
-          flex: 1,
-        }}
-      >
-        {/* เรียง pending ก่อน → preparing → ready */}
-        {[...pending, ...preparing, ...ready].map((order) => (
-          <OrderCard key={order.id} order={order} token={token} />
-        ))}
-        {orders.length === 0 && (
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Kitchen Display</span>
           <div
             style={{
-              gridColumn: "1 / -1",
-              textAlign: "center",
-              color: "#444",
-              fontSize: 18,
-              paddingTop: 80,
+              display: "flex",
+              gap: 14,
+              marginLeft: "auto",
+              fontSize: 12,
             }}
           >
-            ไม่มีออเดอร์
+            <span style={{ color: "#e06060" }}>รอทำ {pending.length}</span>
+            <span style={{ color: "#d4a830" }}>กำลังทำ {preparing.length}</span>
+            <span style={{ color: "#4caf50" }}>เสร็จ {ready.length}</span>
           </div>
-        )}
+        </div>
+
+        {/* board */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 10,
+            padding: 12,
+            alignContent: "start",
+            flex: 1,
+          }}
+        >
+          {/* เรียง pending ก่อน → preparing → ready */}
+          {[...pending, ...preparing, ...ready].map((order) => (
+            <OrderCard key={order.id} order={order} token={token} />
+          ))}
+          {orders.length === 0 && (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                textAlign: "center",
+                color: "#444",
+                fontSize: 18,
+                paddingTop: 80,
+              }}
+            >
+              ไม่มีออเดอร์
+            </div>
+          )}
+        </div>
       </div>
-    </div>
     </AuthGuard>
   );
 }

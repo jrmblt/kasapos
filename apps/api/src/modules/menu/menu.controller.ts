@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,6 +12,7 @@ import {
   Query,
 } from "@nestjs/common";
 import { Permission } from "@repo/database";
+import { Public } from "src/auth/decorators/public.decorator";
 import type { JwtPayload } from "../../auth/decorators/current-user.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { RequirePermissions } from "../../auth/decorators/permissions.decorator";
@@ -22,14 +24,19 @@ import { MenuService } from "./menu.service";
 
 @Controller("menu")
 export class MenuController {
-  constructor(private menu: MenuService) {}
+  constructor(private menu: MenuService) { }
 
   // ── Categories ────────────────────────────────────────
 
+  @Public()
   @Get("categories")
-  @RequirePermissions(Permission.MENU_READ)
-  getCategories(@CurrentUser() user: JwtPayload) {
-    return this.menu.getCategories(user.tenantId);
+  getCategories(
+    @CurrentUser() user: JwtPayload | null,
+    @Query("tenantId") queryTenantId?: string,
+  ) {
+    const tenantId = user?.tenantId ?? queryTenantId;
+    if (!tenantId) throw new BadRequestException("ต้องระบุ tenantId");
+    return this.menu.getCategories(tenantId);
   }
 
   @Post("categories")
@@ -53,13 +60,17 @@ export class MenuController {
 
   // ── Menu Items ────────────────────────────────────────
 
+  @Public()
   @Get()
-  @RequirePermissions(Permission.MENU_READ)
   getMenuItems(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: JwtPayload | null,
+    @Query("tenantId") queryTenantId?: string,
     @Query("includeHidden") includeHidden?: string,
   ) {
-    return this.menu.getMenuItems(user.tenantId, includeHidden === "true");
+    // staff ใช้จาก token, self-order ใช้จาก query
+    const tenantId = user?.tenantId ?? queryTenantId;
+    if (!tenantId) throw new BadRequestException("ต้องระบุ tenantId");
+    return this.menu.getMenuItems(tenantId, includeHidden === "true");
   }
 
   @Get(":id")

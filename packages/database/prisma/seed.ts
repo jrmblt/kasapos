@@ -123,6 +123,17 @@ async function main() {
     },
   });
 
+  await db.branch.update({
+    where: { id: 'branch-main' },
+    data: {
+      selfOrderEnabled: true,
+      payOnlineEnabled: true,
+      payAtCounterEnabled: true,
+      payLaterEnabled: false,
+      queueEnabled: true,
+    },
+  })
+
   // ── Users ─────────────────────────────────────────────
   await db.user.createMany({
     skipDuplicates: true,

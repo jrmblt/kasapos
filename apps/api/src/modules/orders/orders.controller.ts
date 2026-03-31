@@ -16,6 +16,7 @@ import {
 import { RequirePermissions } from "../../auth/decorators/permissions.decorator";
 import { Public } from "../../auth/decorators/public.decorator";
 import { CreateOrderDto } from "./dto/create-order.dto";
+import { CreateSelfOrderDto } from "./dto/create-self-order.dto";
 import { UpdateOrderItemStatusDto } from "./dto/update-order-item-status.dto";
 import { VoidItemDto } from "./dto/void-item.dto";
 import { OrdersService } from "./orders.service";
@@ -23,6 +24,12 @@ import { OrdersService } from "./orders.service";
 @Controller("orders")
 export class OrdersController {
   constructor(private orders: OrdersService) { }
+
+  @Public()
+  @Post("self-order")
+  createSelfOrder(@Body() dto: CreateSelfOrderDto) {
+    return this.orders.createSelfOrder(dto);
+  }
 
   @Post()
   @RequirePermissions(Permission.ORDER_CREATE)
