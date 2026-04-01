@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+# Build one Next.js app: APP_NAME = package folder (pos, backoffice, kds, selforder, landing)
+FROM oven/bun:1 AS builder
+WORKDIR /app
+
+ARG NEXT_PUBLIC_API_URL=https://api.pos.blttech.net
+ARG NEXT_PUBLIC_APP_URL=
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV CI=true
+
+COPY package.json bun.lock turbo.json ./
+COPY apps ./apps
+COPY packages ./packages
+
+RUN bun install --frozen-lockfile
+RUN bun run --filter @repo/database db:generate
+RUN bun run --filter @repo/database build
+
+ARG APP_NAME=pos
+RUN bunx turbo run build --filter=${APP_NAME}
+
+FROM oven/bun:1-slim AS runner
+WORKDIR /app
+ARG APP_NAME=pos
+ARG PORT=3300
+ENV APP_NAME=${APP_NAME}
+ENV PORT=${PORT}
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/package.json /app/bun.lock ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/${APP_NAME} ./apps/${APP_NAME}
+COPY --from=builder /app/packages ./packages
+
+WORKDIR /app/apps/${APP_NAME}
+EXPOSE 3000
+CMD ["sh", "-c", "bunx next start -H 0.0.0.0 -p ${PORT}"]

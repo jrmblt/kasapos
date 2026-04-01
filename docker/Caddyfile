@@ -1,0 +1,38 @@
+
+{
+  email admin@blttech.net
+}
+
+pos.blttech.net {
+  redir https://www.pos.blttech.net{uri} permanent
+}
+
+www.pos.blttech.net {
+  encode gzip zstd
+  reverse_proxy landing:3000
+}
+
+api.pos.blttech.net {
+  encode gzip zstd
+  reverse_proxy api:3333
+}
+
+pos.pos.blttech.net {
+  encode gzip zstd
+  reverse_proxy pos:3300
+}
+
+bo.pos.blttech.net {
+  encode gzip zstd
+  reverse_proxy backoffice:3100
+}
+
+kds.pos.blttech.net {
+  encode gzip zstd
+  reverse_proxy kds:3200
+}
+
+order.pos.blttech.net {
+  encode gzip zstd
+  reverse_proxy selforder:3400
+}

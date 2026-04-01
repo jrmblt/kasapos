@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+FROM oven/bun:1 AS builder
+WORKDIR /app
+COPY package.json bun.lock turbo.json ./
+COPY apps ./apps
+COPY packages ./packages
+RUN bun install --frozen-lockfile
+RUN bun run --filter @repo/database db:generate
+RUN bun run --filter @repo/database build
+RUN bunx turbo run build --filter=api
+
+FROM oven/bun:1-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/bun.lock ./bun.lock
+COPY docker/entrypoint-api.sh /entrypoint-api.sh
+RUN chmod +x /entrypoint-api.sh
+EXPOSE 3333
+CMD ["/entrypoint-api.sh"]
