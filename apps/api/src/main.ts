@@ -1,9 +1,22 @@
 import { RequestMethod, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+
+  // ไม่ผ่าน global prefix — ชี้ทางไป /health กับ /api (เส้นทางจริงของแอปอยู่ใต้ /api)
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.get("/", (_req, res) => {
+    res.status(200).json({
+      service: "serva-api",
+      health: "/health",
+      api: "/api",
+    });
+  });
 
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") ?? [
     "http://localhost:3000",
