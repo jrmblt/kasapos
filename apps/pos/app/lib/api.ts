@@ -116,6 +116,11 @@ interface CreateOrderBody {
 export const orderApi = {
   create: (body: CreateOrderBody) => post<Order>("/orders", body),
 
+  addItems: (
+    orderId: string,
+    items: CreateOrderBody["items"],
+  ) => post<Order>(`/orders/${orderId}/items`, { items }),
+
   get: (id: string) => get<Order>(`/orders/${id}`),
 
   voidItem: (

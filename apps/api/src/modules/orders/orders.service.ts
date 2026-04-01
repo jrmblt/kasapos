@@ -131,6 +131,92 @@ export class OrdersService {
     return order;
   }
 
+  // ── Add Items to existing order ─────────────────────
+  async addItems(
+    tenantId: string,
+    orderId: string,
+    items: CreateOrderDto['items'],
+  ) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, branch: { tenantId }, status: { not: 'COMPLETED' } },
+      select: { id: true, branchId: true, subtotal: true, total: true, discountAmt: true },
+    });
+    if (!order) throw new NotFoundException('ไม่พบออเดอร์หรือปิดแล้ว');
+
+    const menuIds = [...new Set(items.map((i) => i.menuItemId))];
+    const menuItems = await this.prisma.menuItem.findMany({
+      where: { id: { in: menuIds }, tenantId },
+      select: { id: true, name: true, price: true, stockQty: true, isAvailable: true },
+    });
+    const menuMap = new Map(menuItems.map((m) => [m.id, m]));
+
+    for (const item of items) {
+      const menu = menuMap.get(item.menuItemId);
+      if (!menu) throw new NotFoundException(`ไม่พบเมนู ${item.menuItemId}`);
+      if (!menu.isAvailable) throw new BadRequestException(`${menu.name} ไม่พร้อมขาย`);
+      if (menu.stockQty !== null && menu.stockQty < item.qty) {
+        throw new BadRequestException(`${menu.name} stock ไม่พอ (เหลือ ${menu.stockQty})`);
+      }
+    }
+
+    const newOrderItems = items.map((item) => {
+      const menu = menuMap.get(item.menuItemId)!;
+      return {
+        orderId,
+        menuItemId: item.menuItemId,
+        name: menu.name,
+        unitPrice: menu.price,
+        qty: item.qty,
+        modifiers: item.modifiers ?? {},
+        note: item.note,
+      };
+    });
+
+    const addedSubtotal = newOrderItems.reduce(
+      (s, i) => s + Number(i.unitPrice) * i.qty,
+      0,
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.orderItem.createMany({ data: newOrderItems });
+
+      for (const item of items) {
+        const menu = menuMap.get(item.menuItemId)!;
+        if (menu.stockQty === null) continue;
+        const newQty = menu.stockQty - item.qty;
+        await tx.menuItem.update({
+          where: { id: item.menuItemId },
+          data: { stockQty: newQty, isAvailable: newQty > 0 },
+        });
+        await tx.stockLog.create({
+          data: {
+            menuItemId: item.menuItemId,
+            delta: -item.qty,
+            qtyAfter: newQty,
+            reason: 'ORDER_DEDUCT',
+            orderId,
+          },
+        });
+      }
+
+      const newSubtotal = Number(order.subtotal) + addedSubtotal;
+      const newTotal = newSubtotal - Number(order.discountAmt);
+      return tx.order.update({
+        where: { id: orderId },
+        data: { subtotal: newSubtotal, total: newTotal },
+        include: {
+          items: { orderBy: { createdAt: 'asc' } },
+          table: { select: { name: true, zone: true } },
+          payments: true,
+        },
+      });
+    });
+
+    this.kds.emitNewItems(order.branchId, updated);
+
+    return updated;
+  }
+
   // ── Get Order ────────────────────────────────────────
   async findOne(tenantId: string, orderId: string) {
     const order = await this.prisma.order.findFirst({
@@ -139,9 +225,9 @@ export class OrdersService {
         branch: { tenantId },
       },
       include: {
-        items: { where: { status: { not: "VOIDED" } } },
+        items: { orderBy: { createdAt: 'asc' } },
         table: { select: { name: true, zone: true } },
-        payments: { select: { method: true, amount: true, status: true } },
+        payments: { select: { id: true, method: true, amount: true, status: true } },
       },
     });
     if (!order) throw new NotFoundException("ไม่พบออเดอร์");

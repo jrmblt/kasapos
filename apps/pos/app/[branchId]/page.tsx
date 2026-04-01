@@ -145,34 +145,32 @@ export default function PosPage({
       setSelectedItem(null);
 
       const currentOrder = activeOrderRef.current;
+      const newItems = [
+        {
+          menuItemId: item.id,
+          qty,
+          modifiers: modifiers as OrderItemModifiers,
+          note: note || undefined,
+        },
+      ];
 
       try {
-        const o = await orderApi.create({
-          branchId,
-          tableId: table.id,
-          sessionId: currentOrder?.sessionId ?? undefined,
-          type: "DINE_IN",
-          items: [
-            {
-              menuItemId: item.id,
-              qty,
-              modifiers: modifiers as OrderItemModifiers,
-              note: note || undefined,
-            },
-          ],
-        });
+        let o: Order;
 
-        if (cancelledRef.current) return;
-
-        if (!currentOrder) {
-          // order ใหม่
-          setActiveOrder(o);
+        if (currentOrder) {
+          o = await orderApi.addItems(currentOrder.id, newItems);
         } else {
-          // refresh order ที่มีอยู่
-          await refreshOrder();
+          o = await orderApi.create({
+            branchId,
+            tableId: table.id,
+            type: "DINE_IN",
+            items: newItems,
+          });
         }
 
-        // refresh table status แบบ lazy
+        if (cancelledRef.current) return;
+        setActiveOrder(o);
+
         void refreshTables();
         setShowMenu(false);
       } catch (err) {
@@ -180,7 +178,7 @@ export default function PosPage({
         alert(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
       }
     },
-    [branchId, user, refreshOrder, refreshTables],
+    [branchId, user, refreshTables],
   );
 
   // ── Void item ─────────────────────────────────────────────

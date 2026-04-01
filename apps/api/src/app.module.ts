@@ -18,6 +18,8 @@ import { CouponsModule } from './modules/coupons/coupons.module';
 import { TablesModule } from './modules/tables/tables.module';
 import { MemberAuthModule } from './modules/member-auth/member-auth.module';
 import { ShiftsModule } from './modules/shifts/shifts.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { BranchModule } from './modules/branch/branch.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { ShiftsModule } from './modules/shifts/shifts.module';
     TablesModule,
     MemberAuthModule,
     ShiftsModule,
+    ReportsModule,
+    BranchModule,
   ],
   controllers: [AppController],
   providers: [

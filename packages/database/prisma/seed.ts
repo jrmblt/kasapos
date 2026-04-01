@@ -212,7 +212,10 @@ async function main() {
   for (const r of roleData) {
     roles[r.id] = await prisma.role.upsert({
       where: { tenantId_name: { tenantId: tenant.id, name: r.name } },
-      update: {},
+      update: {
+        baseRole: r.baseRole,
+        permissions: BASE_ROLE_PERMISSIONS[r.baseRole] ?? [],
+      },
       create: {
         id: r.id,
         tenantId: tenant.id,
@@ -314,9 +317,10 @@ async function main() {
   ];
 
   for (const u of usersData) {
+    const { id, ...data } = u;
     await prisma.user.upsert({
-      where: { id: u.id },
-      update: {},
+      where: { id },
+      update: data,
       create: u,
     });
   }
@@ -651,7 +655,7 @@ async function main() {
   for (const m of menuItemsData) {
     await prisma.menuItem.upsert({
       where: { id: m.id },
-      update: {},
+      update: { ...m, tenantId: tenant.id },
       create: { ...m, tenantId: tenant.id, isAvailable: true },
     });
   }
@@ -1796,7 +1800,10 @@ async function main() {
   ]) {
     cafeRoles[r.id] = await prisma.role.upsert({
       where: { tenantId_name: { tenantId: cafe.id, name: r.name } },
-      update: {},
+      update: {
+        baseRole: r.baseRole,
+        permissions: BASE_ROLE_PERMISSIONS[r.baseRole] ?? [],
+      },
       create: {
         id: r.id,
         tenantId: cafe.id,
@@ -1858,7 +1865,8 @@ async function main() {
       roleId: cafeRoles["cafe-role-kitchen"].id,
     },
   ]) {
-    await prisma.user.upsert({ where: { id: u.id }, update: {}, create: u });
+    const { id, ...data } = u;
+    await prisma.user.upsert({ where: { id }, update: data, create: u });
   }
 
   // ── C6. CATEGORIES ──────────────────────────────────────
@@ -1934,7 +1942,7 @@ async function main() {
   for (const m of cafeMenuData) {
     await prisma.menuItem.upsert({
       where: { id: m.id },
-      update: {},
+      update: { ...m, tenantId: cafe.id },
       create: { ...m, tenantId: cafe.id, isAvailable: true },
     });
   }

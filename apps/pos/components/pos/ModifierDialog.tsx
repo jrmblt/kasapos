@@ -63,6 +63,7 @@ export function ModifierDialog({ item, onClose, onAdd }: Props) {
   }
 
   function handleAdd() {
+    if (!item) return;
     const missing = item.modifiers
       .filter((m) => m.isRequired && !selected[m.name])
       .map((m) => m.name);

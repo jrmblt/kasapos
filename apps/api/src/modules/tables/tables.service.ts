@@ -59,9 +59,40 @@ export class TablesService {
 
   // ── CRUD สำหรับ backoffice ────────────────────────────
   async findAll(branchId: string) {
-    return this.prisma.table.findMany({
+    const tables = await this.prisma.table.findMany({
       where: { branchId },
       orderBy: [{ zone: 'asc' }, { name: 'asc' }],
+      include: {
+        orders: {
+          where: {
+            status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED'] },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            total: true,
+            status: true,
+            _count: { select: { items: { where: { status: { not: 'VOIDED' } } } } },
+          },
+        },
+      },
+    })
+
+    return tables.map((t) => {
+      const order = t.orders[0]
+      const { orders: _, ...table } = t
+      return {
+        ...table,
+        activeOrder: order
+          ? {
+            id: order.id,
+            total: order.total,
+            itemCount: order._count.items,
+            status: order.status,
+          }
+          : undefined,
+      }
     })
   }
 

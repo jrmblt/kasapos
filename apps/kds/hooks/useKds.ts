@@ -4,10 +4,11 @@ import { getKdsSocket } from "../lib/socket";
 import { clearToken } from "./useAuth";
 
 export const KDS_EVENTS = {
-  ORDER_NEW: "order:new", // ออเดอร์ใหม่เข้า
-  ORDER_ITEM_UPDATED: "order:item:updated", // item status เปลี่ยน
-  ORDER_COMPLETED: "order:completed", // order จบแล้ว (ลบออกจาก board)
-  ORDER_VOIDED: "order:item:voided", // item ถูก void
+  ORDER_NEW: "order:new",
+  ORDER_ITEMS_ADDED: "order:items:added",
+  ORDER_ITEM_UPDATED: "order:item:updated",
+  ORDER_COMPLETED: "order:completed",
+  ORDER_VOIDED: "order:item:voided",
 } as const;
 
 // ── Types ────────────────────────────────────────────────
@@ -35,6 +36,7 @@ export interface KdsOrder {
 type Action =
   | { type: "INIT"; payload: KdsOrder[] }
   | { type: "ADD"; payload: KdsOrder }
+  | { type: "REPLACE"; payload: KdsOrder }
   | {
     type: "UPDATE_ITEM";
     payload: { orderId: string; itemId: string; status: string };
@@ -48,9 +50,18 @@ function reducer(state: KdsOrder[], action: Action): KdsOrder[] {
       return Array.isArray(action.payload) ? action.payload : state;
 
     case "ADD":
-      // ไม่เพิ่มซ้ำ
       if (state.some((o) => o.id === action.payload.id)) return state;
       return [...state, action.payload];
+
+    case "REPLACE": {
+      const exists = state.some((o) => o.id === action.payload.id);
+      if (exists) {
+        return state.map((o) =>
+          o.id === action.payload.id ? action.payload : o,
+        );
+      }
+      return [...state, action.payload];
+    }
 
     case "UPDATE_ITEM":
       return state.map((order) => {
@@ -127,7 +138,11 @@ export function useKds(branchId: string) {
 
     socket.on("order:new", (order: KdsOrder) => {
       dispatch({ type: "ADD", payload: order });
-      // เสียงแจ้งเตือน
+      new Audio("/sounds/new-order.mp3").play().catch(() => { });
+    });
+
+    socket.on("order:items:added", (order: KdsOrder) => {
+      dispatch({ type: "REPLACE", payload: order });
       new Audio("/sounds/new-order.mp3").play().catch(() => { });
     });
 
@@ -145,6 +160,7 @@ export function useKds(branchId: string) {
 
     return () => {
       socket.off("order:new");
+      socket.off("order:items:added");
       socket.off("order:item:updated");
       socket.off("order:completed");
       socket.off("order:item:voided");

@@ -1,5 +1,4 @@
 {
-  "root": false,
   "$schema": "https://biomejs.dev/schemas/2.2.0/schema.json",
   "vcs": {
     "enabled": true,
@@ -13,8 +12,7 @@
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
-    "indentWidth": 2,
-    "lineEnding": "lf"
+    "indentWidth": 2
   },
   "linter": {
     "enabled": true,

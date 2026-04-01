@@ -43,6 +43,16 @@ export class OrdersController {
     return this.orders.getKdsFeed(branchId);
   }
 
+  @Post(":id/items")
+  @RequirePermissions(Permission.ORDER_CREATE)
+  addItems(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body() dto: { items: CreateOrderDto['items'] },
+  ) {
+    return this.orders.addItems(user.tenantId, id, dto.items);
+  }
+
   @Get(":id")
   @RequirePermissions(Permission.ORDER_VIEW)
   findOne(@CurrentUser() user: JwtPayload, @Param("id") id: string) {

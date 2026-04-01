@@ -85,7 +85,7 @@ export function CartPanel({
 
       {/* Items */}
       <div className="flex-1 overflow-y-auto py-1">
-        {order.items.map((item: OrderItem) => {
+        {(order.items ?? []).map((item: OrderItem) => {
           const statusStyle = ITEM_STATUS_STYLE[item.status] ?? "text-zinc-300";
           const statusIcon = ITEM_STATUS_ICON[item.status] ?? "";
           const isVoided = item.status === "VOIDED";

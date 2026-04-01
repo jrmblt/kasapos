@@ -130,28 +130,20 @@ export class PaymentsService {
       }),
     ]);
 
-    // ปิด session + คืนโต๊ะ
-    // await this.orders.complete(dto.orderId, "");
     await this.orders.completeInternal(dto.orderId);
 
     try {
       await this.queue.createTicket(dto.branchId, { orderId: dto.orderId });
     } catch {
-      // queue disabled → ไม่เป็นไร
+      // queue disabled
     }
-    // try {
-    //   const order = await this.prisma.order.findUnique({
-    //     where: { id: dto.orderId },
-    //     select: { branchId: true },
-    //   })
-    //   if (order) {
-    //     await this.queue.createTicket(order.branchId, { orderId: dto.orderId });
-    //   }
-    // } catch {
-    //   // queue disabled → ไม่เป็นไร ไม่ต้อง throw
-    // }
 
-    return { success: true, changeAmt };
+    const fullOrder = await this.prisma.order.findUnique({
+      where: { id: dto.orderId },
+      select: { receiptToken: true },
+    });
+
+    return { success: true, changeAmt, receiptToken: fullOrder?.receiptToken ?? null };
   }
 
   // ── Refund ───────────────────────────────────────────

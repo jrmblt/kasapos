@@ -13,10 +13,11 @@ import { RedisService } from "../../redis/redis.service";
 
 // KDS events ที่ client รับ
 export const KDS_EVENTS = {
-  ORDER_NEW: "order:new", // ออเดอร์ใหม่เข้า
-  ORDER_ITEM_UPDATED: "order:item:updated", // item status เปลี่ยน
-  ORDER_COMPLETED: "order:completed", // order จบแล้ว (ลบออกจาก board)
-  ORDER_VOIDED: "order:item:voided", // item ถูก void
+  ORDER_NEW: "order:new",
+  ORDER_ITEMS_ADDED: "order:items:added",
+  ORDER_ITEM_UPDATED: "order:item:updated",
+  ORDER_COMPLETED: "order:completed",
+  ORDER_VOIDED: "order:item:voided",
 } as const;
 
 @WebSocketGateway({
@@ -59,6 +60,12 @@ export class KdsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   emitNewOrder(branchId: string, order: unknown) {
     this.server.to(`kds:${branchId}`).emit(KDS_EVENTS.ORDER_NEW, order);
+  }
+
+  emitNewItems(branchId: string, order: unknown) {
+    this.server
+      .to(`kds:${branchId}`)
+      .emit(KDS_EVENTS.ORDER_ITEMS_ADDED, order);
   }
 
   emitItemUpdated(
