@@ -29,7 +29,6 @@ ARG PORT=3300
 ENV APP_NAME=${APP_NAME}
 ENV PORT=${PORT}
 ENV NODE_ENV=production
-ENV HOSTNAME=0.0.0.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -41,4 +40,5 @@ COPY --from=builder /app/packages ./packages
 
 WORKDIR /app/apps/${APP_NAME}
 EXPOSE 3000
-CMD ["sh", "-c", "bunx next start -H 0.0.0.0 -p ${PORT}"]
+# อย่าตั้ง HOSTNAME=0.0.0.0 — Next ใช้เป็นชื่อโฮสต์ ไม่ใช่ bind address
+CMD ["sh", "-c", "exec bun run start -- -H 0.0.0.0"]

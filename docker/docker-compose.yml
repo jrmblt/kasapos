@@ -93,7 +93,6 @@ services:
         NEXT_PUBLIC_APP_URL: ${PUBLIC_POS_ORIGIN:-https://pos.pos.blttech.net}
     environment:
       PORT: "3300"
-      HOSTNAME: "0.0.0.0"
     networks:
       - internal
     restart: unless-stopped
@@ -109,7 +108,6 @@ services:
         NEXT_PUBLIC_APP_URL: ${PUBLIC_BO_ORIGIN:-https://bo.pos.blttech.net}
     environment:
       PORT: "3100"
-      HOSTNAME: "0.0.0.0"
     networks:
       - internal
     restart: unless-stopped
@@ -125,7 +123,6 @@ services:
         NEXT_PUBLIC_APP_URL: ${PUBLIC_KDS_ORIGIN:-https://kds.pos.blttech.net}
     environment:
       PORT: "3200"
-      HOSTNAME: "0.0.0.0"
     networks:
       - internal
     restart: unless-stopped
@@ -141,7 +138,6 @@ services:
         NEXT_PUBLIC_APP_URL: ${PUBLIC_ORDER_ORIGIN:-https://order.pos.blttech.net}
     environment:
       PORT: "3400"
-      HOSTNAME: "0.0.0.0"
     networks:
       - internal
     restart: unless-stopped
@@ -157,7 +153,6 @@ services:
         NEXT_PUBLIC_APP_URL: ${PUBLIC_WWW_ORIGIN:-https://www.pos.blttech.net}
     environment:
       PORT: "3000"
-      HOSTNAME: "0.0.0.0"
     networks:
       - internal
     restart: unless-stopped
