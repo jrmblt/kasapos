@@ -28,6 +28,15 @@
     "db:deploy": {
       "cache": false
     },
+    "db:reset": {
+      "cache": false
+    },
+    "db:studio": {
+      "cache": false
+    },
+    "db:seed": {
+      "cache": false
+    },
     "dev": {
       "cache": false,
       "dependsOn": ["^build", "^db:generate"],

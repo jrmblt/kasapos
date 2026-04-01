@@ -14,7 +14,8 @@ COPY package.json bun.lock turbo.json ./
 COPY apps ./apps
 COPY packages ./packages
 
-RUN bun install --frozen-lockfile
+# --ignore-scripts: root `prepare` runs lefthook (needs git); DB generate/build run next lines
+RUN bun install --frozen-lockfile --ignore-scripts
 RUN bun run --filter @repo/database db:generate
 RUN bun run --filter @repo/database build
 
