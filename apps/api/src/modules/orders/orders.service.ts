@@ -91,7 +91,8 @@ export class OrdersService {
         },
         include: {
           items: true,
-          table: { select: { name: true } },
+          table: { select: { name: true, zone: true } },
+          payments: true,
         },
       });
 

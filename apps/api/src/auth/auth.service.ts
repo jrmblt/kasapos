@@ -191,6 +191,7 @@ export class AuthService {
         name: user.name,
         role: baseRole,
         branchId: user.branchId,
+        tenantId: user.tenantId,
       },
     };
   }
