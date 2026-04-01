@@ -17,6 +17,7 @@ import { RedisModule } from "./redis/redis.module";
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { TablesModule } from './modules/tables/tables.module';
 import { MemberAuthModule } from './modules/member-auth/member-auth.module';
+import { ShiftsModule } from './modules/shifts/shifts.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { MemberAuthModule } from './modules/member-auth/member-auth.module';
     CouponsModule,
     TablesModule,
     MemberAuthModule,
+    ShiftsModule,
   ],
   controllers: [AppController],
   providers: [
