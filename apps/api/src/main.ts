@@ -25,6 +25,16 @@ async function bootstrap() {
     "http://localhost:3200",
     "http://localhost:3300",
     "http://localhost:3400",
+    "https://www.pos.blttech.net",
+    "https://pos.pos.blttech.net",
+    "https://bo.pos.blttech.net",
+    "https://kds.pos.blttech.net",
+    "https://order.pos.blttech.net",
+    "https://www.pos.blttech.net",
+    "https://pos.pos.blttech.net",
+    "https://bo.pos.blttech.net",
+    "https://kds.pos.blttech.net",
+    "https://order.pos.blttech.net",
   ];
 
   app.enableCors({
