@@ -71,6 +71,7 @@ services:
       OMISE_PUBLIC_KEY: ${OMISE_PUBLIC_KEY:-}
       OMISE_SECRET_KEY: ${OMISE_SECRET_KEY:-}
       OMISE_WEBHOOK_SECRET: ${OMISE_WEBHOOK_SECRET:-}
+      PROMPTPAY_PHONE: ${PROMPTPAY_PHONE:-0982585534}
     depends_on:
       postgres:
         condition: service_healthy
