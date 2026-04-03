@@ -120,11 +120,21 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* ป้องกัน double-tap zoom บน button/link ทุกตัว */
+    touch-action: manipulation;
   }
   body {
     @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;
+    /* ป้องกัน tap highlight สีเทาบน Android */
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* iOS zoom เมื่อ focus input: ต้องให้ font-size >= 16px */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
   }
 }

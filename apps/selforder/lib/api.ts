@@ -52,12 +52,17 @@ export const paymentApi = {
       qrCodeUrl: string;
       amount: number;
       expiresAt: string;
+      isMock: boolean;
     }>("/payments/promptpay", {
       method: "POST",
       body: JSON.stringify({ orderId }),
     }),
   getStatus: (paymentId: string) =>
     req<{ status: string }>(`/payments/${paymentId}/status`),
+  mockConfirm: (paymentId: string) =>
+    req<{ success: boolean; message: string }>(`/payments/mock-confirm/${paymentId}`, {
+      method: "POST",
+    }),
 };
 
 // ── Member ─────────────────────────────────────────────

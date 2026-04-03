@@ -12,10 +12,6 @@ import {
 } from "@nestjs/common";
 import { Permission } from "@repo/database";
 import * as crypto from "crypto";
-import {
-  CurrentUser,
-  JwtPayload,
-} from "../../auth/decorators/current-user.decorator";
 import { RequirePermissions } from "../../auth/decorators/permissions.decorator";
 import { Public } from "../../auth/decorators/public.decorator";
 import { PayCashDto } from "./dto/pay-cash.dto";
@@ -27,16 +23,16 @@ import { PaymentsService } from "./payments.service";
 export class PaymentsController {
   constructor(private payments: PaymentsService) { }
 
-  // ── PromptPay QR ─────────────────────────────────────
+  // ── PromptPay QR — Public: selforder ไม่มี JWT ─────────
+  @Public()
   @Post("promptpay")
-  @RequirePermissions(Permission.PAYMENT_PROCESS)
   createPromptPay(@Body() dto: PayPromptPayDto) {
     return this.payments.createPromptPay(dto);
   }
 
-  // ── Mock confirm (dev only) ───────────────────────────
+  // ── Mock confirm (dev only) — Public เพื่อให้ selforder เรียกได้ ─
+  @Public()
   @Post("mock-confirm/:paymentId")
-  @RequirePermissions(Permission.PAYMENT_PROCESS)
   mockConfirm(@Param("paymentId") paymentId: string) {
     return this.payments.mockConfirmPromptPay(paymentId);
   }
@@ -55,9 +51,9 @@ export class PaymentsController {
     return this.payments.refund(dto);
   }
 
-  // ── Payment Status ────────────────────────────────────
+  // ── Payment Status — Public: selforder poll จากมือถือ ──
+  @Public()
   @Get(":id/status")
-  @RequirePermissions(Permission.PAYMENT_PROCESS)
   getStatus(@Param("id") id: string) {
     return this.payments.getStatus(id);
   }
