@@ -1,3 +1,5 @@
+import { promptPayQRImageUrl } from './promptpay-qr'
+
 export interface OmiseCharge {
   id: string
   status: 'pending' | 'successful' | 'failed'
@@ -41,7 +43,8 @@ class OmiseMock {
         // mock QR image URL — dev ใช้ได้เลย
         scannable_code: {
           image: {
-            download_uri: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=MOCK_PROMPTPAY_${chargeId}`,
+            // QR จริงที่สแกนแล้วโอนเข้า PromptPay ได้เลย (mock dev mode)
+            download_uri: promptPayQRImageUrl({ amount: params.amount / 100 }),
           },
         },
       },
