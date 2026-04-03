@@ -143,6 +143,21 @@ services:
       - internal
     restart: unless-stopped
 
+  cashier:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.next
+      args:
+        APP_NAME: cashier
+        PORT: "3500"
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_ORIGIN:-https://api.pos.blttech.net}
+        NEXT_PUBLIC_APP_URL: ${PUBLIC_CASHIER_ORIGIN:-https://cashier.pos.blttech.net}
+    environment:
+      PORT: "3500"
+    networks:
+      - internal
+    restart: unless-stopped
+
   landing:
     build:
       context: ..
@@ -174,6 +189,7 @@ services:
       - backoffice
       - kds
       - selforder
+      - cashier
       - landing
     networks:
       - internal

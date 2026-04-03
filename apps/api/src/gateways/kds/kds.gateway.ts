@@ -29,6 +29,7 @@ export const KDS_EVENTS = {
       "http://localhost:3200",
       "http://localhost:3300",
       "http://localhost:3400",
+      "http://localhost:3500",
       "https://www.pos.blttech.net",
       "https://pos.pos.blttech.net",
       "https://bo.pos.blttech.net",

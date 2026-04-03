@@ -36,3 +36,8 @@ order.pos.blttech.net {
   encode gzip zstd
   reverse_proxy selforder:3400
 }
+
+cashier.pos.blttech.net {
+  encode gzip zstd
+  reverse_proxy cashier:3500
+}
