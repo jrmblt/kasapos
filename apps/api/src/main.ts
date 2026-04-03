@@ -36,6 +36,7 @@ async function bootstrap() {
     "https://bo.pos.blttech.net",
     "https://kds.pos.blttech.net",
     "https://order.pos.blttech.net",
+    "https://cashier.pos.blttech.net",
   ];
 
   app.enableCors({

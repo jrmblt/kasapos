@@ -35,6 +35,7 @@ export const KDS_EVENTS = {
       "https://bo.pos.blttech.net",
       "https://kds.pos.blttech.net",
       "https://order.pos.blttech.net",
+      "https://cashier.pos.blttech.net",
     ],
     credentials: true,
   },
@@ -45,7 +46,7 @@ export class KdsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(KdsGateway.name);
 
-  constructor(private redis: RedisService) { }
+  constructor(private redis: RedisService) {}
 
   handleConnection(client: Socket) {
     const branchId = client.handshake.query.branchId as string;
@@ -69,9 +70,7 @@ export class KdsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   emitNewItems(branchId: string, order: unknown) {
-    this.server
-      .to(`kds:${branchId}`)
-      .emit(KDS_EVENTS.ORDER_ITEMS_ADDED, order);
+    this.server.to(`kds:${branchId}`).emit(KDS_EVENTS.ORDER_ITEMS_ADDED, order);
   }
 
   emitItemUpdated(
