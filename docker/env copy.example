@@ -1,0 +1,49 @@
+# คัดลอกเป็น docker/.env แล้วแก้ค่า
+# cp docker/env.example docker/.env
+#
+# === โหมดที่ 1: Postgres / Redis ภายนอก (ไม่รัน bundled-db) ====================
+# ใส่ connection string จาก provider (Supabase, RDS, Upstash, ElastiCache ฯลฯ)
+# API อยู่ใน Docker จึงต้องใช้โฮสต์ที่เข้าถึงได้จาก container เท่านั้น
+# (public hostname, ไม่ใช้ localhost ของเครื่องโฮสต์ — ยกเว้น host.docker.internal บน Docker Desktop)
+#
+DATABASE_URL=postgresql://USER:PASSWORD@db.example.com:5432/DBNAME?schema=public
+REDIS_URL=redis://default:PASSWORD@redis.example.com:6379
+# TLS Redis ตัวอย่าง: rediss://default:PASSWORD@host:6380
+#
+# ตัวแปรด้านล่าง (POSTGRES_*, REDIS_PASSWORD) ใช้เฉพาะเมื่อรัน --profile bundled-db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=
+POSTGRES_DB=serva
+REDIS_PASSWORD=
+
+# === โหมดที่ 2: รัน Postgres+Redis ใน Docker =================================
+# docker compose ... --profile bundled-db up -d --build
+# ตั้ง POSTGRES_PASSWORD / REDIS_PASSWORD และ DATABASE_URL / REDIS_URL แบบชี้ service ภายใน:
+#
+# DATABASE_URL=postgresql://postgres:YOUR_PASS@postgres:5432/serva?schema=public
+# REDIS_URL=redis://:YOUR_REDIS_PASS@redis:6379
+# POSTGRES_PASSWORD=YOUR_PASS
+# REDIS_PASSWORD=YOUR_REDIS_PASS
+#
+# ── API ─────────────────────────────────────────────────
+JWT_SECRET=use-long-random-string-in-production
+
+# ไม่มีช่องว่างหลัง comma — ต้องตรงกับ origin ที่ browser ใช้จริง (https)
+ALLOWED_ORIGINS=https://www.pos.blttech.net,https://pos.pos.blttech.net,https://bo.pos.blttech.net,https://kds.pos.blttech.net,https://order.pos.blttech.net,https://cashier.pos.blttech.net
+
+# Omise (ถ้าไม่ใช้ mock)
+USE_REAL_OMISE=false
+OMISE_PUBLIC_KEY=
+OMISE_SECRET_KEY=
+OMISE_WEBHOOK_SECRET=
+PROMPTPAY_PHONE=0982585534
+
+# ── Public URLs (ใช้ตอน build Next.js — ต้องเป็น https + ไม่มีท้าย /) ──
+DOMAIN=pos.blttech.net
+PUBLIC_API_ORIGIN=https://api.pos.blttech.net
+PUBLIC_POS_ORIGIN=https://pos.pos.blttech.net
+PUBLIC_BO_ORIGIN=https://bo.pos.blttech.net
+PUBLIC_KDS_ORIGIN=https://kds.pos.blttech.net
+PUBLIC_ORDER_ORIGIN=https://order.pos.blttech.net
+PUBLIC_CASHIER_ORIGIN=https://cashier.pos.blttech.net
+PUBLIC_WWW_ORIGIN=https://www.pos.blttech.net

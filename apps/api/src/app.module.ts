@@ -20,6 +20,7 @@ import { MemberAuthModule } from './modules/member-auth/member-auth.module';
 import { ShiftsModule } from './modules/shifts/shifts.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BranchModule } from './modules/branch/branch.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { BranchModule } from './modules/branch/branch.module';
     ShiftsModule,
     ReportsModule,
     BranchModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

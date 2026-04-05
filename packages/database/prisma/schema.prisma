@@ -117,6 +117,45 @@ enum CouponTargetType {
   PHYSICAL_QR // QR ที่พิมพ์แจก
 }
 
+enum AdminRole {
+  SUPER_ADMIN
+  SUPPORT
+  BILLING
+}
+
+model AdminUser {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  password    String
+  name        String
+  adminRole   AdminRole @default(SUPPORT)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String
+  tenantId  String?
+  payload   Json     @default("{}")
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  admin AdminUser @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
 model Coupon {
   id             String           @id @default(cuid())
   tenantId       String
@@ -166,10 +205,14 @@ model CouponUsage {
 // ─── MULTI-TENANCY ───────────────────────────────────────
 
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique // ใช้เป็น subdomain: {slug}.pos.app
-  plan      String   @default("starter") // starter | pro | enterprise
+  id            String    @id @default(cuid())
+  name          String
+  slug          String    @unique // ใช้เป็น subdomain: {slug}.pos.app
+  plan          String    @default("starter") // starter | pro | enterprise
+  trialEndsAt   DateTime?
+  isActive      Boolean   @default(true)
+  suspendedAt   DateTime?
+  suspendReason String?
   /// settings schema:
   /// {
   ///   "coupon": {
@@ -186,9 +229,9 @@ model Tenant {
   ///     "pointExpireMonths": number | null
   ///   }
   /// }
-  settings  Json     @default("{}") // JSON config ต่างๆ
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  settings      Json      @default("{}") // JSON config ต่างๆ
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   branches           Branch[]
   users              User[]
