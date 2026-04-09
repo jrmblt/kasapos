@@ -1,16 +1,13 @@
 import {
-  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { BASE_ROLE_PERMISSIONS } from "@repo/database";
-import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
+import { JwtPayload } from "./decorators/current-user.decorator";
 
-// TTL ตาม env หรือ fallback
-const ACCESS_TTL = 15 * 60; // 15 นาที (วินาที)
 const REFRESH_TTL = 8 * 60 * 60; // 8 ชั่วโมง (วินาที)
 
 @Injectable()
@@ -23,163 +20,203 @@ export class AuthService {
 
   // ── Login ───────────────────────────────────────────────
   async login(email: string, pin: string) {
-    console.log("email", email);
-    console.log("pin", pin);
-    const user = await this.prisma.user.findFirst({
-      where: { email, isActive: true },
-      select: {
-        id: true,
-        tenantId: true,
-        branchId: true,
-        roleId: true,
-        role: { select: { baseRole: true, permissions: true } },
-        name: true,
-        pinCode: true,
-        tokenVersion: true,
-      },
-    });
-
-    console.log("user", user);
-
-    if (!user || !user.pinCode || user.pinCode !== pin) {
-      throw new UnauthorizedException("อีเมลหรือ PIN ไม่ถูกต้อง");
-    }
-
-    return this.issueTokenPair(user);
-  }
-
-  // ── Refresh ─────────────────────────────────────────────
-  async refresh(userId: string, tokenId: string, tokenVersion: number) {
-    // 1. ดึง hash จาก Redis
-    const key = this.redis.refreshKey(userId, tokenId);
-    const stored = await this.redis.get(key);
-
-    if (!stored) {
-      throw new UnauthorizedException("Session หมดอายุ กรุณา login ใหม่");
-    }
-
-    // 2. ลบ key เดิมทันที (rotation — ใช้ได้ครั้งเดียว)
-    await this.redis.del(key);
-
-    // 3. ตรวจ tokenVersion กับ DB
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        tenantId: true,
-        branchId: true,
-        roleId: true,
-        role: { select: { baseRole: true, permissions: true } },
-        name: true,
-        isActive: true,
-        tokenVersion: true,
+      where: { email },
+      include: {
+        memberships: {
+          where: { isActive: true },
+          include: {
+            tenant: { select: { id: true, name: true, slug: true } },
+            branch: { select: { id: true, name: true } },
+            role: { select: { permissions: true, baseRole: true } },
+          },
+        },
       },
     });
 
     if (!user || !user.isActive) {
+      throw new UnauthorizedException("ไม่พบบัญชีนี้");
+    }
+
+    if (user.memberships.length === 0) {
+      throw new UnauthorizedException("ยังไม่ได้รับสิทธิ์เข้าร้านใด");
+    }
+
+    // 1 membership — login ตรง
+    if (user.memberships.length === 1) {
+      const membership = user.memberships[0]!;
+      if (membership.pinCode !== pin) {
+        throw new UnauthorizedException("PIN ไม่ถูกต้อง");
+      }
+      return this.issueTokens(user, membership);
+    }
+
+    // หลาย membership — match PIN ก่อน
+    const matched = user.memberships.filter((m) => m.pinCode === pin);
+    if (matched.length === 0) {
+      throw new UnauthorizedException("PIN ไม่ถูกต้อง");
+    }
+
+    if (matched.length === 1) {
+      return this.issueTokens(user, matched[0]!);
+    }
+
+    // PIN match หลาย tenant → ให้ client เลือก
+    return {
+      requireTenantSelect: true,
+      userId: user.id,
+      tenants: matched.map((m) => ({
+        membershipId: m.id,
+        tenantId: m.tenantId,
+        tenantName: m.tenant.name,
+        role: m.role?.baseRole,
+        branchName: m.branch?.name ?? "ทุกสาขา",
+        lastUsedAt: m.lastUsedAt,
+      })),
+    };
+  }
+
+  // ── Select tenant (multi-tenant login step 2) ───────────
+  async selectTenant(userId: string, membershipId: string, pin: string) {
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { id: membershipId, userId, isActive: true },
+      include: {
+        role: { select: { permissions: true, baseRole: true } },
+      },
+    });
+
+    if (!membership) throw new UnauthorizedException("ไม่พบ membership");
+    if (membership.pinCode !== pin)
+      throw new UnauthorizedException("PIN ไม่ถูกต้อง");
+
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    return this.issueTokens(user, membership);
+  }
+
+  // ── Refresh ─────────────────────────────────────────────
+  async refresh(membershipId: string, tokenVersion: number) {
+    // ตรวจ tokenVersion จาก Redis (cache) หรือ DB
+    const cachedVersion = await this.redis.get(`tv:${membershipId}`);
+    const currentVersion = cachedVersion
+      ? parseInt(cachedVersion)
+      : await this.prisma.tenantMembership
+          .findUnique({
+            where: { id: membershipId },
+            select: { tokenVersion: true, isActive: true },
+          })
+          .then((m) => {
+            if (!m?.isActive) throw new UnauthorizedException("Membership ถูกระงับ");
+            return m.tokenVersion;
+          });
+
+    if (tokenVersion !== currentVersion) {
+      throw new UnauthorizedException("Session ถูกยกเลิก กรุณา login ใหม่");
+    }
+
+    const membership = await this.prisma.tenantMembership.findUniqueOrThrow({
+      where: { id: membershipId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, isActive: true },
+        },
+        role: { select: { baseRole: true, permissions: true } },
+      },
+    });
+
+    if (!membership.isActive || !membership.user.isActive) {
       throw new UnauthorizedException("บัญชีถูกระงับ");
     }
 
-    if (user.tokenVersion !== tokenVersion) {
-      // PIN ถูกเปลี่ยน หรือถูก kick → ยิง del ทุก session ทิ้งด้วย
-      await this.redis.delPattern(`refresh:${userId}:*`);
-      throw new ForbiddenException("Session ถูกยกเลิก กรุณา login ใหม่");
-    }
-
-    // 4. ออก token pair ใหม่
-    return this.issueTokenPair(user);
+    return this.issueTokens(membership.user, membership);
   }
 
-  // ── Logout ──────────────────────────────────────────────
-  async logout(userId: string, tokenId: string) {
-    await this.redis.del(this.redis.refreshKey(userId, tokenId));
+  // ── Logout (invalidate current device) ─────────────────
+  async logout(membershipId: string) {
+    await this.redis.del(`tv:${membershipId}`);
+    return { success: true };
   }
 
-  // ── Logout all devices ──────────────────────────────────
-  async logoutAll(userId: string) {
-    await this.redis.delPattern(`refresh:${userId}:*`);
+  // ── Logout all (increment tokenVersion → revoke all tokens) ──
+  async logoutAll(membershipId: string) {
+    const updated = await this.prisma.tenantMembership.update({
+      where: { id: membershipId },
+      data: { tokenVersion: { increment: 1 } },
+      select: { tokenVersion: true },
+    });
+    await this.redis.set(`tv:${membershipId}`, String(updated.tokenVersion), REFRESH_TTL);
+    return { success: true };
   }
 
-  // ── Revoke user (kick พนักงาน / เปลี่ยน PIN) ────────────
-  async revokeUser(userId: string) {
-    await Promise.all([
-      // increment tokenVersion → access token เดิมใช้ refresh ไม่ได้อีก
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { tokenVersion: { increment: 1 } },
-      }),
-      // ลบ refresh token ทุก device ทันที
-      this.redis.delPattern(`refresh:${userId}:*`),
-    ]);
+  // ── Revoke membership (kick / PIN change) ───────────────
+  async revokeMembership(membershipId: string) {
+    const updated = await this.prisma.tenantMembership.update({
+      where: { id: membershipId },
+      data: { tokenVersion: { increment: 1 } },
+      select: { tokenVersion: true },
+    });
+    await this.redis.set(`tv:${membershipId}`, String(updated.tokenVersion), REFRESH_TTL);
   }
 
   // ── PIN verify สำหรับ sensitive actions (void, discount) ──
-  async verifyPin(userId: string, pin: string): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+  async verifyPin(membershipId: string, pin: string): Promise<boolean> {
+    const membership = await this.prisma.tenantMembership.findUnique({
+      where: { id: membershipId },
       select: { pinCode: true },
     });
-    return user?.pinCode === pin;
+    return membership?.pinCode === pin;
   }
 
-  // ── Private: สร้าง token pair ───────────────────────────
-  private async issueTokenPair(user: {
-    id: string;
-    tenantId: string;
-    branchId: string | null;
-    roleId: string | null;
-    role: { baseRole: string; permissions: string[] } | null;
-    name: string;
-    tokenVersion: number;
-  }) {
-    // let permissions: string[]
+  // ── Private: build payload + sign token pair ────────────
+  private async issueTokens(
+    user: { id: string; name: string; email?: string | null; isActive?: boolean },
+    membership: {
+      id: string;
+      tenantId: string;
+      branchId: string | null;
+      tokenVersion: number;
+      role?: { baseRole: string; permissions: string[] } | null;
+    },
+  ) {
+    await this.prisma.tenantMembership.update({
+      where: { id: membership.id },
+      data: { lastUsedAt: new Date() },
+    });
 
-    // if (user.customRoleId) {
-    //   // มี custom role → ใช้ permissions จาก Role table
-    //   const customRole = await this.prisma.role.findUnique({
-    //     where: { id: user.customRoleId },
-    //     select: { permissions: true, baseRole: true },
-    //   })
-    //   permissions = customRole?.permissions ?? []
-    // } else {
-    //   // ไม่มี custom role → fallback ตาม BASE_ROLE_PERMISSIONS
-    //   permissions = BASE_ROLE_PERMISSIONS[user.role] ?? []
-    // }
-
-    const baseRole = user.role?.baseRole ?? "CASHIER";
+    const baseRole = membership.role?.baseRole ?? "CASHIER";
     const permissions: string[] =
-      user.role?.permissions ?? BASE_ROLE_PERMISSIONS[baseRole] ?? [];
+      membership.role?.permissions?.length
+        ? membership.role.permissions
+        : (BASE_ROLE_PERMISSIONS[baseRole] ?? []);
 
-    const tokenId = crypto.randomUUID();
-
-    const payload = {
+    const payload: JwtPayload = {
       sub: user.id,
-      tenantId: user.tenantId,
-      branchId: user.branchId,
+      membershipId: membership.id,
+      tenantId: membership.tenantId,
+      branchId: membership.branchId ?? null,
       role: baseRole,
       name: user.name,
-      version: user.tokenVersion,
-      jti: tokenId,
+      tokenVersion: membership.tokenVersion,
       permissions,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
-      // access token — short lived
       this.jwt.signAsync(payload, { expiresIn: "15m" }),
-
-      // refresh token — ใช้ sign ด้วย secret เดียวกัน แต่ TTL ยาวกว่า
       this.jwt.signAsync(
-        { sub: user.id, jti: tokenId, version: user.tokenVersion },
+        {
+          sub: user.id,
+          membershipId: membership.id,
+          tokenVersion: membership.tokenVersion,
+        },
         { expiresIn: "8h" },
       ),
     ]);
 
-    // เก็บ hash ของ refresh token ใน Redis
-    const hash = crypto.createHash("sha256").update(refreshToken).digest("hex");
-
+    // cache tokenVersion ใน Redis (TTL = refresh token lifetime)
     await this.redis.set(
-      this.redis.refreshKey(user.id, tokenId),
-      hash,
+      `tv:${membership.id}`,
+      String(membership.tokenVersion),
       REFRESH_TTL,
     );
 
@@ -189,9 +226,11 @@ export class AuthService {
       user: {
         id: user.id,
         name: user.name,
+        email: user.email,
+        tenantId: membership.tenantId,
+        branchId: membership.branchId,
         role: baseRole,
-        branchId: user.branchId,
-        tenantId: user.tenantId,
+        membershipId: membership.id,
       },
     };
   }

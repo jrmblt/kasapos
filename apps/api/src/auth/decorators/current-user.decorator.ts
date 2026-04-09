@@ -1,13 +1,13 @@
 import { createParamDecorator, ExecutionContext } from "@nestjs/common";
 
 export interface JwtPayload {
-  sub: string;
+  sub: string;           // userId
+  membershipId: string;
   tenantId: string;
   branchId: string | null;
-  role: string;
+  role: string;          // baseRole (OWNER | MANAGER | CASHIER | KITCHEN)
   name: string;
-  version: number; // tokenVersion — เพิ่มมาจากเดิม
-  jti: string; // unique token id
+  tokenVersion: number;  // membership.tokenVersion — ใช้ invalidate token
   permissions: string[];
 }
 

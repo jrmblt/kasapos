@@ -3,10 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { AdminRole, BASE_ROLE_PERMISSIONS, UserRole } from "@repo/database";
-// import * as bcrypt from "bcryptjs";
-// import * as crypto from "crypto";
-// import { BASE_ROLE_PERMISSIONS } from "../../../permissions";
+import { BASE_ROLE_PERMISSIONS, UserRole } from "@repo/database";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { CreateTenantDto } from "../dto/create-tenant.dto";
 import { CreateTenantUserDto } from "../dto/create-tenant-user.dto";
@@ -18,7 +15,7 @@ export class AdminTenantsService {
   constructor(
     private prisma: PrismaService,
     private adminAuth: AdminAuthService,
-  ) { }
+  ) {}
 
   // ── List tenants ──────────────────────────────────────
   async list(page = 1, search = "") {
@@ -26,11 +23,11 @@ export class AdminTenantsService {
     const skip = (page - 1) * take;
     const where = search
       ? {
-        OR: [
-          { name: { contains: search, mode: "insensitive" as const } },
-          { slug: { contains: search, mode: "insensitive" as const } },
-        ],
-      }
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { slug: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
       : {};
 
     const [tenants, total] = await Promise.all([
@@ -41,7 +38,7 @@ export class AdminTenantsService {
         orderBy: { createdAt: "desc" },
         include: {
           _count: {
-            select: { branches: true, users: true },
+            select: { branches: true, memberships: true },
           },
         },
       }),
@@ -57,12 +54,16 @@ export class AdminTenantsService {
       where: { id: tenantId },
       include: {
         branches: true,
-        users: {
-          include: { role: { select: { name: true } } },
+        memberships: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+            role: { select: { name: true } },
+            branch: { select: { name: true } },
+          },
           orderBy: { createdAt: "asc" },
         },
         loyaltyTierConfigs: { orderBy: { sortOrder: "asc" } },
-        _count: { select: { branches: true, users: true } },
+        _count: { select: { branches: true, memberships: true } },
       },
     });
     if (!tenant) throw new NotFoundException("ไม่พบ tenant");
@@ -117,12 +118,7 @@ export class AdminTenantsService {
 
       // 3. System roles
       const roleMap: Record<string, string> = {};
-      for (const baseRole of [
-        "OWNER",
-        "MANAGER",
-        "CASHIER",
-        "KITCHEN",
-      ] as UserRole[]) {
+      for (const baseRole of ["OWNER", "MANAGER", "CASHIER", "KITCHEN"] as UserRole[]) {
         const role = await tx.role.create({
           data: {
             tenantId: tenant.id,
@@ -138,50 +134,27 @@ export class AdminTenantsService {
       // 4. Default loyalty tiers
       await tx.loyaltyTierConfig.createMany({
         data: [
-          {
-            tenantId: tenant.id,
-            name: "Bronze",
-            minPoints: 0,
-            multiplier: 1.0,
-            color: "#CD7F32",
-            sortOrder: 1,
-          },
-          {
-            tenantId: tenant.id,
-            name: "Silver",
-            minPoints: 500,
-            multiplier: 1.5,
-            color: "#C0C0C0",
-            sortOrder: 2,
-          },
-          {
-            tenantId: tenant.id,
-            name: "Gold",
-            minPoints: 2000,
-            multiplier: 2.0,
-            color: "#FFD700",
-            sortOrder: 3,
-          },
-          {
-            tenantId: tenant.id,
-            name: "Platinum",
-            minPoints: 8000,
-            multiplier: 3.0,
-            color: "#E5E4E2",
-            sortOrder: 4,
-          },
+          { tenantId: tenant.id, name: "Bronze", minPoints: 0, multiplier: 1.0, color: "#CD7F32", sortOrder: 1 },
+          { tenantId: tenant.id, name: "Silver", minPoints: 500, multiplier: 1.5, color: "#C0C0C0", sortOrder: 2 },
+          { tenantId: tenant.id, name: "Gold", minPoints: 2000, multiplier: 2.0, color: "#FFD700", sortOrder: 3 },
+          { tenantId: tenant.id, name: "Platinum", minPoints: 8000, multiplier: 3.0, color: "#E5E4E2", sortOrder: 4 },
         ],
       });
 
-      // 5. Owner user
-      const owner = await tx.user.create({
+      // 5. Owner user (upsert) + membership
+      const owner = await tx.user.upsert({
+        where: { email: dto.ownerEmail },
+        create: { email: dto.ownerEmail, name: dto.ownerName, isActive: true },
+        update: {},
+      });
+
+      const membership = await tx.tenantMembership.create({
         data: {
+          userId: owner.id,
           tenantId: tenant.id,
           branchId: branch.id,
-          name: dto.ownerName,
-          email: dto.ownerEmail,
-          pinCode: dto.ownerPin,
           roleId: roleMap["OWNER"],
+          pinCode: dto.ownerPin,
           isActive: true,
         },
       });
@@ -194,8 +167,79 @@ export class AdminTenantsService {
         ownerEmail: dto.ownerEmail,
       });
 
-      return { tenant, branch, owner: { ...owner, pinCode: undefined } };
+      return {
+        tenant,
+        branch,
+        owner: { id: owner.id, email: owner.email, name: owner.name },
+        membership: { id: membership.id },
+      };
     });
+  }
+
+  // ── Create user for tenant ─────────────────────────────
+  async createUser(tenantId: string, dto: CreateTenantUserDto, adminId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // upsert User (identity) — ถ้ามี email อยู่แล้วใช้เลย
+      const user = await tx.user.upsert({
+        where: { email: dto.email },
+        create: { email: dto.email, name: dto.name, isActive: true },
+        update: {},
+      });
+
+      // เช็คว่ามี membership ใน tenant นี้แล้วหรือยัง
+      const existing = await tx.tenantMembership.findUnique({
+        where: { userId_tenantId: { userId: user.id, tenantId } },
+      });
+      if (existing) throw new ConflictException("user นี้มีสิทธิ์ใน tenant นี้แล้ว");
+
+      const membership = await tx.tenantMembership.create({
+        data: {
+          userId: user.id,
+          tenantId,
+          branchId: dto.branchId ?? null,
+          roleId: dto.roleId,
+          pinCode: dto.pinCode,
+          isActive: true,
+        },
+        include: {
+          role: { select: { name: true } },
+          branch: { select: { name: true } },
+        },
+      });
+
+      await this.adminAuth.audit(adminId, "CREATE_TENANT_USER", tenantId, {
+        email: dto.email,
+        roleId: dto.roleId,
+      });
+
+      return {
+        user: { id: user.id, email: user.email, name: user.name },
+        membership,
+      };
+    });
+  }
+
+  // ── Reset user PIN (per membership) ──────────────────
+  async resetUserPin(
+    tenantId: string,
+    membershipId: string,
+    newPin: string,
+    adminId: string,
+  ) {
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { id: membershipId, tenantId },
+    });
+    if (!membership) throw new NotFoundException("ไม่พบ membership");
+
+    await this.prisma.tenantMembership.update({
+      where: { id: membershipId },
+      data: { pinCode: newPin, tokenVersion: { increment: 1 } },
+    });
+
+    await this.adminAuth.audit(adminId, "RESET_USER_PIN", tenantId, {
+      membershipId,
+    });
+    return { success: true };
   }
 
   // ── Update tenant ─────────────────────────────────────
@@ -223,67 +267,6 @@ export class AdminTenantsService {
 
     await this.adminAuth.audit(adminId, "UPDATE_TENANT", tenantId, dto);
     return updated;
-  }
-
-  // ── Create user for tenant ─────────────────────────────
-  async createUser(
-    tenantId: string,
-    dto: CreateTenantUserDto,
-    adminId: string,
-  ) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-    });
-    if (!tenant) throw new NotFoundException("ไม่พบ tenant");
-
-    const existing = await this.prisma.user.findUnique({
-      where: { tenantId_email: { tenantId, email: dto.email } },
-    });
-    if (existing) throw new ConflictException("อีเมลนี้มีอยู่แล้วใน tenant นี้");
-
-    const user = await this.prisma.user.create({
-      data: {
-        tenantId: tenant.id,
-        branchId: dto.branchId ?? null,
-        email: dto.email,
-        name: dto.name,
-        pinCode: dto.pinCode,
-        roleId: dto.roleId,
-        isActive: true,
-      },
-      include: {
-        role: { select: { name: true } },
-        branch: { select: { name: true } },
-      },
-    });
-
-    await this.adminAuth.audit(adminId, "CREATE_TENANT_USER", tenantId, {
-      email: dto.email,
-      roleId: dto.roleId,
-    });
-
-    return { ...user, pinCode: undefined }; // ไม่ return PIN
-  }
-
-  // ── Reset user PIN ────────────────────────────────────
-  async resetUserPin(
-    tenantId: string,
-    userId: string,
-    newPin: string,
-    adminId: string,
-  ) {
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, tenantId },
-    });
-    if (!user) throw new NotFoundException("ไม่พบ user");
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { pinCode: newPin, tokenVersion: { increment: 1 } },
-    });
-
-    await this.adminAuth.audit(adminId, "RESET_USER_PIN", tenantId, { userId });
-    return { success: true };
   }
 
   // ── Platform stats ────────────────────────────────────

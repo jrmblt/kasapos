@@ -102,15 +102,15 @@ export class AdminTenantsController {
     return this.tenants.createUser(tenantId, dto, admin.sub);
   }
 
-  @Patch(":id/users/:userId/reset-pin")
+  @Patch(":id/memberships/:membershipId/reset-pin")
   @RequireAdminRole(AdminRole.SUPER_ADMIN)
   resetPin(
     @AdminUser() admin: AdminJwtPayload,
     @Param("id") tenantId: string,
-    @Param("userId") userId: string,
+    @Param("membershipId") membershipId: string,
     @Body() dto: ResetPinDto,
   ) {
-    return this.tenants.resetUserPin(tenantId, userId, dto.newPin, admin.sub);
+    return this.tenants.resetUserPin(tenantId, membershipId, dto.newPin, admin.sub);
   }
 
   // ── Impersonate ─────────────────────────────────────────

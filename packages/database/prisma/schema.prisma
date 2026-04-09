@@ -234,7 +234,8 @@ model Tenant {
   updatedAt     DateTime  @updatedAt
 
   branches           Branch[]
-  users              User[]
+  // users              User[]
+  memberships        TenantMembership[]
   categories         Category[]
   menuItems          MenuItem[]
   modifiers          Modifier[]
@@ -281,7 +282,8 @@ model Branch {
   tables            Table[]
   orders            Order[]
   shifts            Shift[]
-  users             User[]
+  // users             User[]
+  memberships       TenantMembership[]
   queueTickets      QueueTicket[]
   pointTransactions PointTransaction[]
 
@@ -292,29 +294,58 @@ model Branch {
 // ─── USERS ───────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
+  id        String   @id @default(cuid())
+  // tenantId     String
+  // branchId     String? // null = ทุกสาขา
+  name      String
+  email     String?  @unique
+  // pinCode      String? // 4-6 digit PIN สำหรับ void/manager action
+  // tokenVersion Int      @default(0)
+  // role         UserRole @default(CASHIER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // roleId       String?
+
+  // tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // branch Branch? @relation(fields: [branchId], references: [id])
+  // orders Order[] @relation("CashierOrders")
+  // shifts Shift[]
+  // role   Role?   @relation(fields: [roleId], references: [id])
+
+  memberships TenantMembership[]
+
+  // @@unique([tenantId, email])
+  // @@index([tenantId])
+  // @@index([branchId])
+  @@map("users")
+}
+
+// ── TENANT MEMBERSHIP (role + permission ต่อ tenant) ──
+model TenantMembership {
+  id           String    @id @default(cuid())
+  userId       String
   tenantId     String
   branchId     String? // null = ทุกสาขา
-  name         String
-  email        String?
-  pinCode      String? // 4-6 digit PIN สำหรับ void/manager action
-  tokenVersion Int      @default(0)
-  // role         UserRole @default(CASHIER)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
   roleId       String?
+  pinCode      String? // PIN ต่อ tenant (OWNER ร้าน A มี PIN ต่างกับ ร้าน B)
+  tokenVersion Int       @default(0) // ย้ายมาจาก User
+  isActive     Boolean   @default(true)
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch Branch? @relation(fields: [branchId], references: [id])
+  role   Role?   @relation(fields: [roleId], references: [id], onDelete: SetNull)
   orders Order[] @relation("CashierOrders")
   shifts Shift[]
-  role   Role?   @relation(fields: [roleId], references: [id])
 
-  @@unique([tenantId, email])
+  @@unique([userId, tenantId])
+  @@index([userId])
   @@index([tenantId])
-  @@index([branchId])
-  @@map("users")
+  @@map("tenant_memberships")
 }
 
 // ─── MENU ────────────────────────────────────────────────
@@ -455,11 +486,11 @@ model Order {
   memberAccountId String? // ถ้า order มาจาก member (self-order)
   checkoutMode    String? // "PAY_ONLINE" | "PAY_LATER" | "PAY_AT_COUNTER"
 
-  branch        Branch          @relation(fields: [branchId], references: [id])
-  memberAccount LoyaltyAccount? @relation(fields: [memberAccountId], references: [id])
-  table         Table?          @relation(fields: [tableId], references: [id])
-  session       TableSession?   @relation("SessionOrders", fields: [sessionId], references: [id])
-  cashier       User?           @relation("CashierOrders", fields: [cashierId], references: [id])
+  cashier       TenantMembership? @relation("CashierOrders", fields: [cashierId], references: [id])
+  branch        Branch            @relation(fields: [branchId], references: [id])
+  memberAccount LoyaltyAccount?   @relation(fields: [memberAccountId], references: [id])
+  table         Table?            @relation(fields: [tableId], references: [id])
+  session       TableSession?     @relation("SessionOrders", fields: [sessionId], references: [id])
   items         OrderItem[]
   payments      Payment[]
   queueTicket   QueueTicket?
@@ -527,7 +558,7 @@ model Payment {
 model Shift {
   id           String    @id @default(cuid())
   branchId     String
-  userId       String
+  // userId       String
   openCash     Decimal   @db.Decimal(10, 2) // เงินเปิดกะ
   closeCash    Decimal?  @db.Decimal(10, 2) // เงินนับปิดกะ
   expectedCash Decimal?  @db.Decimal(10, 2) // คำนวณจากยอดขาย
@@ -535,12 +566,16 @@ model Shift {
   note         String?
   openedAt     DateTime  @default(now())
   closedAt     DateTime?
+  membershipId String
+
+  membership TenantMembership @relation(fields: [membershipId], references: [id])
 
   branch Branch @relation(fields: [branchId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
+  // user   User   @relation(fields: [userId], references: [id])
 
   @@index([branchId])
-  @@index([userId])
+  @@index([membershipId])
+  // @@index([userId])
   @@map("shifts")
 }
 
@@ -682,8 +717,9 @@ model Role {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users  User[]
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // users  User[]
+  memberships TenantMembership[]
 
   @@unique([tenantId, name])
   @@index([tenantId])

@@ -17,33 +17,44 @@ import { JwtRefreshGuard } from "./guards/jwt-refresh.guard";
 
 @Controller("auth")
 export class AuthController {
-  constructor(private auth: AuthService) { }
+  constructor(private auth: AuthService) {}
 
   @Public()
-  @Post('login')
+  @Post("login")
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.pin)
+    return this.auth.login(dto.email, dto.pin);
   }
 
+  // refresh — JwtRefreshGuard validates the refresh token signature,
+  // payload: { sub, membershipId, tokenVersion }
   @Public()
   @UseGuards(JwtRefreshGuard)
-  @Post('refresh')
+  @Post("refresh")
   @HttpCode(HttpStatus.OK)
   refresh(@CurrentUser() user: any) {
-    // user มาจาก JwtRefreshStrategy.validate
-    return this.auth.refresh(user.sub, user.jti, user.version)
+    return this.auth.refresh(user.membershipId, user.tokenVersion);
   }
 
-  @Post('logout')
+  @Post("logout")
   @HttpCode(HttpStatus.OK)
   logout(@CurrentUser() user: JwtPayload) {
-    return this.auth.logout(user.sub, user.jti)
+    return this.auth.logout(user.membershipId);
   }
 
-  @Post('logout-all')
+  @Post("logout-all")
   @HttpCode(HttpStatus.OK)
   logoutAll(@CurrentUser() user: JwtPayload) {
-    return this.auth.logoutAll(user.sub)
+    return this.auth.logoutAll(user.membershipId);
+  }
+
+  // เรียกหลัง login ที่ requireTenantSelect: true
+  @Public()
+  @Post("select-tenant")
+  @HttpCode(HttpStatus.OK)
+  selectTenant(
+    @Body() body: { userId: string; membershipId: string; pin: string },
+  ) {
+    return this.auth.selectTenant(body.userId, body.membershipId, body.pin);
   }
 }

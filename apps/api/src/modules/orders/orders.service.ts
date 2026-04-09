@@ -20,7 +20,7 @@ export class OrdersService {
   ) { }
 
   // ── Create Order ─────────────────────────────────────
-  async create(cashierId: string | null, tenantId: string, dto: CreateOrderDto & {
+  async create(membershipId: string | null, tenantId: string, dto: CreateOrderDto & {
     checkoutMode?: string
     guestName?: string
     memberAccountId?: string
@@ -81,7 +81,7 @@ export class OrdersService {
           branchId: dto.branchId,
           tableId: dto.tableId,
           sessionId: dto.sessionId,
-          cashierId: cashierId ?? undefined,
+          cashierId: membershipId ?? undefined,
           type: dto.type ?? "DINE_IN",
           note: dto.note,
           subtotal,
@@ -307,19 +307,19 @@ export class OrdersService {
 
   // ── Void Item ────────────────────────────────────────
   async voidItem(
-    userId: string,
+    membershipId: string,
     tenantId: string,
     orderId: string,
     itemId: string,
     dto: VoidItemDto,
   ) {
-    // ตรวจ PIN ของ user ที่ขอ void
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { pinCode: true, role: true },
+    // ตรวจ PIN ผ่าน membership (PIN ต่อ tenant)
+    const membership = await this.prisma.tenantMembership.findUnique({
+      where: { id: membershipId },
+      select: { pinCode: true, userId: true },
     });
 
-    if (!user?.pinCode || user.pinCode !== dto.pin) {
+    if (!membership?.pinCode || membership.pinCode !== dto.pin) {
       throw new ForbiddenException("PIN ไม่ถูกต้อง");
     }
 
@@ -328,7 +328,7 @@ export class OrdersService {
         where: { id: itemId },
         data: {
           status: "VOIDED",
-          voidedById: userId,
+          voidedById: membership.userId,
           voidReason: dto.voidReason,
         },
         select: {
@@ -556,9 +556,9 @@ export class OrdersService {
       throw new BadRequestException("สาขานี้ไม่รองรับ pay online");
     }
 
-    // 3. ใช้ create เดิม — ส่ง cashierId เป็น null (self-order ไม่มี cashier)
+    // 3. ใช้ create เดิม — ส่ง membershipId เป็น null (self-order ไม่มี cashier)
     return this.create(
-      null, // cashierId = null
+      null, // membershipId = null
       branch.tenantId,
       {
         branchId: dto.branchId,

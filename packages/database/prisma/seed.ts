@@ -230,98 +230,42 @@ async function main() {
   // ── 5. USERS ─────────────────────────────────────────────
   console.log("👤  Creating users...");
 
+  // membership.id = user.id เพื่อให้ orders.cashierId อ้างอิงได้เลย
   const usersData = [
     // สาขาสีลม
-    {
-      id: "user-owner",
-      tenantId: tenant.id,
-      branchId: branchMain.id,
-      name: "คุณแม่สมศรี",
-      email: "owner@krua.com",
-      pinCode: "1234",
-      roleId: roles["role-owner"].id,
-    },
-    {
-      id: "user-mgr-s",
-      tenantId: tenant.id,
-      branchId: branchMain.id,
-      name: "คุณสมชาย",
-      email: "manager.s@krua.com",
-      pinCode: "2345",
-      roleId: roles["role-manager"].id,
-    },
-    {
-      id: "user-cash-s1",
-      tenantId: tenant.id,
-      branchId: branchMain.id,
-      name: "นภา",
-      email: "napa@krua.com",
-      pinCode: "3456",
-      roleId: roles["role-cashier"].id,
-    },
-    {
-      id: "user-cash-s2",
-      tenantId: tenant.id,
-      branchId: branchMain.id,
-      name: "ต้อม",
-      email: "tom@krua.com",
-      pinCode: "4567",
-      roleId: roles["role-cashier"].id,
-    },
-    {
-      id: "user-kds-s1",
-      tenantId: tenant.id,
-      branchId: branchMain.id,
-      name: "ครัวหลัก",
-      email: "kitchen1@krua.com",
-      pinCode: "5678",
-      roleId: roles["role-kitchen"].id,
-    },
-    {
-      id: "user-kds-s2",
-      tenantId: tenant.id,
-      branchId: branchMain.id,
-      name: "ครัวเสริม",
-      email: "kitchen2@krua.com",
-      pinCode: "6789",
-      roleId: roles["role-kitchen"].id,
-    },
+    { id: "user-owner",   name: "คุณแม่สมศรี", email: "owner@krua.com",      pinCode: "1234", branchId: branchMain.id, roleId: roles["role-owner"].id },
+    { id: "user-mgr-s",   name: "คุณสมชาย",   email: "manager.s@krua.com",  pinCode: "2345", branchId: branchMain.id, roleId: roles["role-manager"].id },
+    { id: "user-cash-s1", name: "นภา",         email: "napa@krua.com",       pinCode: "3456", branchId: branchMain.id, roleId: roles["role-cashier"].id },
+    { id: "user-cash-s2", name: "ต้อม",        email: "tom@krua.com",        pinCode: "4567", branchId: branchMain.id, roleId: roles["role-cashier"].id },
+    { id: "user-kds-s1",  name: "ครัวหลัก",   email: "kitchen1@krua.com",   pinCode: "5678", branchId: branchMain.id, roleId: roles["role-kitchen"].id },
+    { id: "user-kds-s2",  name: "ครัวเสริม",  email: "kitchen2@krua.com",   pinCode: "6789", branchId: branchMain.id, roleId: roles["role-kitchen"].id },
     // สาขาลาดพร้าว
-    {
-      id: "user-mgr-l",
-      tenantId: tenant.id,
-      branchId: branchLad.id,
-      name: "คุณมานี",
-      email: "manager.l@krua.com",
-      pinCode: "7890",
-      roleId: roles["role-manager"].id,
-    },
-    {
-      id: "user-cash-l1",
-      tenantId: tenant.id,
-      branchId: branchLad.id,
-      name: "บิ๊ก",
-      email: "big@krua.com",
-      pinCode: "8901",
-      roleId: roles["role-cashier"].id,
-    },
-    {
-      id: "user-kds-l1",
-      tenantId: tenant.id,
-      branchId: branchLad.id,
-      name: "ครัวลาดพร้าว",
-      email: "kitchen.l@krua.com",
-      pinCode: "9012",
-      roleId: roles["role-kitchen"].id,
-    },
+    { id: "user-mgr-l",   name: "คุณมานี",    email: "manager.l@krua.com",  pinCode: "7890", branchId: branchLad.id,  roleId: roles["role-manager"].id },
+    { id: "user-cash-l1", name: "บิ๊ก",       email: "big@krua.com",        pinCode: "8901", branchId: branchLad.id,  roleId: roles["role-cashier"].id },
+    { id: "user-kds-l1",  name: "ครัวลาดพร้าว", email: "kitchen.l@krua.com", pinCode: "9012", branchId: branchLad.id, roleId: roles["role-kitchen"].id },
   ];
 
   for (const u of usersData) {
-    const { id, ...data } = u;
+    // upsert User (identity only)
     await prisma.user.upsert({
-      where: { id },
-      update: data,
-      create: u,
+      where: { email: u.email },
+      create: { id: u.id, name: u.name, email: u.email, isActive: true },
+      update: { name: u.name },
+    });
+
+    // upsert TenantMembership (id = user.id → cashierId / membershipId ยังอ้างอิงได้)
+    await prisma.tenantMembership.upsert({
+      where: { id: u.id },
+      create: {
+        id: u.id,
+        userId: u.id,
+        tenantId: tenant.id,
+        branchId: u.branchId,
+        roleId: u.roleId,
+        pinCode: u.pinCode,
+        isActive: true,
+      },
+      update: { pinCode: u.pinCode, roleId: u.roleId, branchId: u.branchId },
     });
   }
 
@@ -1628,7 +1572,7 @@ async function main() {
     create: {
       id: "shift-demo-1",
       branchId: branchMain.id,
-      userId: "user-cash-s1",
+      membershipId: "user-cash-s1",
       openCash: 2000,
       openedAt: hoursAgo(4),
     },
@@ -1641,7 +1585,7 @@ async function main() {
     create: {
       id: "shift-demo-yesterday",
       branchId: branchMain.id,
-      userId: "user-cash-s1",
+      membershipId: "user-cash-s1",
       openCash: 2000,
       closeCash: 3100,
       expectedCash: 3090,
@@ -1819,54 +1763,31 @@ async function main() {
   console.log("👤  Creating cafe users...");
 
   for (const u of [
-    {
-      id: "cafe-owner",
-      tenantId: cafe.id,
-      branchId: cafeBranch.id,
-      name: "คุณบีม",
-      email: "beam@baanbrew.com",
-      pinCode: "1111",
-      roleId: cafeRoles["cafe-role-owner"].id,
-    },
-    {
-      id: "cafe-mgr",
-      tenantId: cafe.id,
-      branchId: cafeBranch.id,
-      name: "คุณมิ้นท์",
-      email: "mint@baanbrew.com",
-      pinCode: "2222",
-      roleId: cafeRoles["cafe-role-manager"].id,
-    },
-    {
-      id: "cafe-barista-1",
-      tenantId: cafe.id,
-      branchId: cafeBranch.id,
-      name: "แบงค์",
-      email: "bank@baanbrew.com",
-      pinCode: "3333",
-      roleId: cafeRoles["cafe-role-barista"].id,
-    },
-    {
-      id: "cafe-barista-2",
-      tenantId: cafe.id,
-      branchId: cafeBranch.id,
-      name: "เฟิร์น",
-      email: "fern@baanbrew.com",
-      pinCode: "4444",
-      roleId: cafeRoles["cafe-role-barista"].id,
-    },
-    {
-      id: "cafe-kitchen",
-      tenantId: cafe.id,
-      branchId: cafeBranch.id,
-      name: "ครัว Baan Brew",
-      email: "kitchen@baanbrew.com",
-      pinCode: "5555",
-      roleId: cafeRoles["cafe-role-kitchen"].id,
-    },
+    { id: "cafe-owner",     name: "คุณบีม",        email: "beam@baanbrew.com",    pinCode: "1111", roleId: cafeRoles["cafe-role-owner"].id },
+    { id: "cafe-mgr",       name: "คุณมิ้นท์",    email: "mint@baanbrew.com",    pinCode: "2222", roleId: cafeRoles["cafe-role-manager"].id },
+    { id: "cafe-barista-1", name: "แบงค์",         email: "bank@baanbrew.com",    pinCode: "3333", roleId: cafeRoles["cafe-role-barista"].id },
+    { id: "cafe-barista-2", name: "เฟิร์น",        email: "fern@baanbrew.com",    pinCode: "4444", roleId: cafeRoles["cafe-role-barista"].id },
+    { id: "cafe-kitchen",   name: "ครัว Baan Brew", email: "kitchen@baanbrew.com", pinCode: "5555", roleId: cafeRoles["cafe-role-kitchen"].id },
   ]) {
-    const { id, ...data } = u;
-    await prisma.user.upsert({ where: { id }, update: data, create: u });
+    await prisma.user.upsert({
+      where: { email: u.email },
+      create: { id: u.id, name: u.name, email: u.email, isActive: true },
+      update: { name: u.name },
+    });
+
+    await prisma.tenantMembership.upsert({
+      where: { id: u.id },
+      create: {
+        id: u.id,
+        userId: u.id,
+        tenantId: cafe.id,
+        branchId: cafeBranch.id,
+        roleId: u.roleId,
+        pinCode: u.pinCode,
+        isActive: true,
+      },
+      update: { pinCode: u.pinCode, roleId: u.roleId },
+    });
   }
 
   // ── C6. CATEGORIES ──────────────────────────────────────
@@ -2135,7 +2056,7 @@ async function main() {
     create: {
       id: "cafe-shift-1",
       branchId: cafeBranch.id,
-      userId: "cafe-barista-1",
+      membershipId: "cafe-barista-1",
       openCash: 1000,
       openedAt: hoursAgo(3),
     },

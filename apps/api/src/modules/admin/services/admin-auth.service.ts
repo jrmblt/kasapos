@@ -106,18 +106,17 @@ export class AdminAuthService {
       { expiresIn: "15m" },
     );
 
-    // หา owner user ของ tenant เพื่อ login เข้า backoffice
+    // หา owner membership ของ tenant เพื่อแสดงข้อมูลใน impersonate session
     const ownerRole = await this.prisma.role.findFirst({
       where: { tenantId, baseRole: "OWNER" },
     });
-    const ownerUser = await this.prisma.user.findFirst({
+    const ownerMembership = await this.prisma.tenantMembership.findFirst({
       where: { tenantId, roleId: ownerRole?.id },
       select: {
         id: true,
-        name: true,
-        email: true,
         tenantId: true,
         branchId: true,
+        user: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -125,7 +124,16 @@ export class AdminAuthService {
       impersonateToken: token,
       tenantId,
       tenantName: tenant.name,
-      asUser: ownerUser,
+      asUser: ownerMembership
+        ? {
+            id: ownerMembership.user.id,
+            name: ownerMembership.user.name,
+            email: ownerMembership.user.email,
+            membershipId: ownerMembership.id,
+            tenantId: ownerMembership.tenantId,
+            branchId: ownerMembership.branchId,
+          }
+        : null,
       expiresIn: 900,
       warning: "This session lasts 15 minutes only",
     };

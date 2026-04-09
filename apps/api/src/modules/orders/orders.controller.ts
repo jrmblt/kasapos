@@ -34,7 +34,7 @@ export class OrdersController {
   @Post()
   @RequirePermissions(Permission.ORDER_CREATE)
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateOrderDto) {
-    return this.orders.create(user.sub, user.tenantId, dto);
+    return this.orders.create(user.membershipId, user.tenantId, dto);
   }
 
   @Get("kds/:branchId")
@@ -78,7 +78,7 @@ export class OrdersController {
     @Param("itemId") itemId: string,
     @Body() dto: VoidItemDto,
   ) {
-    return this.orders.voidItem(user.sub, user.tenantId, orderId, itemId, dto);
+    return this.orders.voidItem(user.membershipId, user.tenantId, orderId, itemId, dto);
   }
 
   @Patch(":id/complete")

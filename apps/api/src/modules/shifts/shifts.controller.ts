@@ -8,18 +8,22 @@ import {
   Query,
 } from "@nestjs/common";
 import { Permission } from "@repo/database";
+import {
+  CurrentUser,
+  type JwtPayload,
+} from "../../auth/decorators/current-user.decorator";
 import { RequirePermissions } from "../../auth/decorators/permissions.decorator";
 import { CloseShiftDto, OpenShiftDto } from "./dto/open-shift.dto";
 import { ShiftsService } from "./shifts.service";
 
 @Controller("shifts")
 export class ShiftsController {
-  constructor(private shifts: ShiftsService) { }
+  constructor(private shifts: ShiftsService) {}
 
   @Post("open")
   @RequirePermissions(Permission.SHIFT_OPEN)
-  open(@Body() dto: OpenShiftDto) {
-    return this.shifts.open(dto.branchId, dto.userId, dto.openCash);
+  open(@CurrentUser() user: JwtPayload, @Body() dto: OpenShiftDto) {
+    return this.shifts.open(dto.branchId, user.membershipId, dto.openCash);
   }
 
   @Patch(":id/close")
@@ -31,9 +35,9 @@ export class ShiftsController {
   @Get("current")
   @RequirePermissions(Permission.SHIFT_OPEN)
   getCurrent(
+    @CurrentUser() user: JwtPayload,
     @Query("branchId") branchId: string,
-    @Query("userId") userId: string,
   ) {
-    return this.shifts.getCurrent(branchId, userId);
+    return this.shifts.getCurrent(branchId, user.membershipId);
   }
 }
